@@ -3,22 +3,52 @@ import * as XLSX from "xlsx";
 
 // ─── XLSX Parser ──────────────────────────────────────────
 function parseXLSX(buffer) {
-  const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+  const workbook = XLSX.read(buffer, { type: "array", cellDates: false, cellNF: true });
   const sheetName = workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
-  const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-  // Normalize: convert Date objects to strings, numbers stay as-is
-  return rows.map((row) => {
+  const ref = sheet["!ref"];
+  if (!ref) return [];
+
+  // Build a map of column-letter → true if any cell in that column has a date format
+  const dateFormats = /[dDmMyYhHsS]/; // date/time format characters
+  const dateColumns = new Set();
+  Object.keys(sheet).forEach((cellAddr) => {
+    if (cellAddr.startsWith("!")) return;
+    const cell = sheet[cellAddr];
+    if (cell && cell.z && dateFormats.test(cell.z) && !cell.z.includes("#") && !cell.z.includes("0")) {
+      // Extract column letter(s) from cell address
+      const col = cellAddr.replace(/[0-9]/g, "");
+      dateColumns.add(col);
+    }
+  });
+
+  // Get raw rows (preserves actual numbers) and formatted rows (preserves date display)
+  const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: "", raw: true });
+  const formattedRows = XLSX.utils.sheet_to_json(sheet, { defval: "", raw: false });
+
+  // We need to map header names to column letters
+  const range = XLSX.utils.decode_range(ref);
+  const headerMap = {};
+  for (let c = range.s.c; c <= range.e.c; c++) {
+    const cellAddr = XLSX.utils.encode_cell({ r: range.s.r, c });
+    const cell = sheet[cellAddr];
+    if (cell && cell.v != null) {
+      const colLetter = XLSX.utils.encode_col(c);
+      headerMap[String(cell.v)] = colLetter;
+    }
+  }
+
+  return rawRows.map((rawRow, i) => {
+    const fmtRow = formattedRows[i] || {};
     const obj = {};
-    Object.keys(row).forEach((k) => {
-      const v = row[k];
-      if (v instanceof Date) {
-        const y = v.getFullYear();
-        const m = String(v.getMonth() + 1).padStart(2, "0");
-        const d = String(v.getDate()).padStart(2, "0");
-        obj[k] = `${y}-${m}-${d}`;
+    Object.keys(rawRow).forEach((k) => {
+      const colLetter = headerMap[k];
+      if (colLetter && dateColumns.has(colLetter)) {
+        // Date column — use formatted string to preserve display value
+        obj[k] = String(fmtRow[k] ?? rawRow[k]);
       } else {
-        obj[k] = String(v);
+        // Non-date — use raw value (preserves actual numbers)
+        obj[k] = String(rawRow[k] ?? "");
       }
     });
     return obj;
