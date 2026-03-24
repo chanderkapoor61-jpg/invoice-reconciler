@@ -392,11 +392,27 @@ export default function App() {
       filteredNsData = nsData.filter((row) => normalize(row[nsFilterCol] || "") === normalize(nsFilterVal));
     }
 
-    const nsIndex = {}; filteredNsData.forEach((row) => { const key = normalize(row[nsMap.invoiceNumber]); if (key) nsIndex[key] = row; });
-    const icrmIndex = {}; icrmData.forEach((row) => { const key = normalize(row[icrmMap.invoiceNumber]); if (key) icrmIndex[key] = row; });
+    // Aggregate NetSuite line items: sum amounts per invoice, keep first row for date/customer
+    const nsIndex = {};
+    filteredNsData.forEach((row) => {
+      const key = normalize(row[nsMap.invoiceNumber]);
+      if (!key) return;
+      if (!nsIndex[key]) {
+        // First line item — store the row and initialize total
+        nsIndex[key] = { ...row, _totalAmount: Math.abs(parseNum(row[nsMap.amount])), _lineCount: 1 };
+      } else {
+        // Additional line item — add to total
+        nsIndex[key]._totalAmount += Math.abs(parseNum(row[nsMap.amount]));
+        nsIndex[key]._lineCount += 1;
+      }
+    });
 
-    // Convert amounts: strip currency symbols (Rs., ₹, $), commas, take absolute value
-    const toNum = (v) => Math.abs(parseNum(v));
+    const icrmIndex = {};
+    icrmData.forEach((row) => { const key = normalize(row[icrmMap.invoiceNumber]); if (key) icrmIndex[key] = row; });
+
+    // For NS: use pre-aggregated _totalAmount; for ICRM: parse normally
+    const nsToNum = (nsRow) => nsRow._totalAmount || 0;
+    const icrmToNum = (v) => Math.abs(parseNum(v));
 
     const allKeys = new Set([...Object.keys(nsIndex), ...Object.keys(icrmIndex)]);
     const rows = [];
@@ -405,13 +421,14 @@ export default function App() {
       const ns = nsIndex[key]; const icrm = icrmIndex[key];
       const rec = { invoiceNumber: key, issues: [] };
       if (ns && !icrm) {
-        Object.assign(rec, { type: "netsuite_only", nsAmount: toNum(ns[nsMap.amount]), icrmAmount: null, nsDate: ns[nsMap.date] || "", icrmDate: "", nsCustomer: ns[nsMap.customer] || "", icrmCustomer: "" });
+        Object.assign(rec, { type: "netsuite_only", nsAmount: nsToNum(ns), icrmAmount: null, nsDate: ns[nsMap.date] || "", icrmDate: "", nsCustomer: ns[nsMap.customer] || "", icrmCustomer: "", nsLines: ns._lineCount });
         rec.diff = rec.nsAmount; rec.issues.push("Missing in ICRM");
       } else if (!ns && icrm) {
-        Object.assign(rec, { type: "icrm_only", nsAmount: null, icrmAmount: toNum(icrm[icrmMap.amount]), nsDate: "", icrmDate: icrm[icrmMap.date] || "", nsCustomer: "", icrmCustomer: icrm[icrmMap.customer] || "" });
+        Object.assign(rec, { type: "icrm_only", nsAmount: null, icrmAmount: icrmToNum(icrm[icrmMap.amount]), nsDate: "", icrmDate: icrm[icrmMap.date] || "", nsCustomer: "", icrmCustomer: icrm[icrmMap.customer] || "", nsLines: 0 });
         rec.diff = rec.icrmAmount; rec.issues.push("Missing in NetSuite");
       } else {
-        rec.nsAmount = toNum(ns[nsMap.amount]); rec.icrmAmount = toNum(icrm[icrmMap.amount]);
+        rec.nsAmount = nsToNum(ns); rec.icrmAmount = icrmToNum(icrm[icrmMap.amount]);
+        rec.nsLines = ns._lineCount;
         rec.diff = +(rec.nsAmount - rec.icrmAmount).toFixed(2);
         rec.nsDate = ns[nsMap.date] || ""; rec.icrmDate = icrm[icrmMap.date] || "";
         rec.nsCustomer = ns[nsMap.customer] || ""; rec.icrmCustomer = icrm[icrmMap.customer] || "";
@@ -678,13 +695,23 @@ export default function App() {
                 {expandedRow === row.invoiceNumber && (
                   <tr key={`${row.invoiceNumber}-d`}><td colSpan={6} style={{ padding: "16px 24px", background: "#0d0f16", borderBottom: "1px solid var(--border)" }}>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-                      {[{ label: "NetSuite Record", color: COLORS.ns, amt: row.nsAmount, date: row.nsDate, cust: row.nsCustomer }, { label: "ICRM Record", color: COLORS.icrm, amt: row.icrmAmount, date: row.icrmDate, cust: row.icrmCustomer }].map((side) => (
-                        <div key={side.label}><div style={{ fontSize: 11, fontWeight: 700, color: side.color, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8 }}>{side.label}</div>
-                          <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.8 }}>
-                            <div>Amount: <span style={{ color: "var(--text)", fontFamily: "var(--font-mono)" }}>{side.amt != null ? fmt(side.amt) : "N/A"}</span></div>
-                            <div>Date: <span style={{ color: "var(--text)" }}>{side.date || "N/A"}</span></div>
-                            <div>Customer: <span style={{ color: "var(--text)" }}>{side.cust || "N/A"}</span></div>
-                          </div></div>))}
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.ns, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8 }}>NetSuite Record</div>
+                        <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.8 }}>
+                          <div>Amount (total): <span style={{ color: "var(--text)", fontFamily: "var(--font-mono)" }}>{row.nsAmount != null ? fmt(row.nsAmount) : "N/A"}</span></div>
+                          {row.nsLines > 1 && <div>Line Items: <span style={{ color: "#f59e0b", fontWeight: 600 }}>{row.nsLines} lines aggregated</span></div>}
+                          <div>Date: <span style={{ color: "var(--text)" }}>{row.nsDate || "N/A"}</span></div>
+                          <div>Customer: <span style={{ color: "var(--text)" }}>{row.nsCustomer || "N/A"}</span></div>
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.icrm, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8 }}>ICRM Record</div>
+                        <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.8 }}>
+                          <div>Amount: <span style={{ color: "var(--text)", fontFamily: "var(--font-mono)" }}>{row.icrmAmount != null ? fmt(row.icrmAmount) : "N/A"}</span></div>
+                          <div>Date: <span style={{ color: "var(--text)" }}>{row.icrmDate || "N/A"}</span></div>
+                          <div>Customer: <span style={{ color: "var(--text)" }}>{row.icrmCustomer || "N/A"}</span></div>
+                        </div>
+                      </div>
                     </div>
                     {row.issues?.length > 0 && <div style={{ marginTop: 12, padding: "8px 12px", background: "#ef444410", borderRadius: 8, fontSize: 12, color: COLORS.err }}>Issues: {row.issues.join(" • ")}</div>}
                   </td></tr>
