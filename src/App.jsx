@@ -395,7 +395,8 @@ export default function App() {
     saveMappings(nsMap, icrmMap, nsFilterCol, nsFilterVal);
     setHasSavedMapping(true);
     const normalize = (v) => (v || "").toString().trim().toUpperCase();
-    const toNum = (v) => Math.abs(parseFloat((v || "0").toString().replace(/[^0-9.\-]/g, "")) || 0);
+    const parseNum = (v) => parseFloat((v || "0").toString().replace(/[^0-9.\-]/g, "")) || 0;
+
     const normalizeDate = (dateStr) => {
       if (!dateStr) return "";
       const s = dateStr.toString().trim(); if (!s) return "";
@@ -420,8 +421,43 @@ export default function App() {
       filteredNsData = nsData.filter((row) => normalize(row[nsFilterCol] || "") === normalize(nsFilterVal));
     }
 
+    // Auto-detect if ERP amounts appear to be divided by 100 (e.g., percentage format in Excel)
+    // Compare median absolute amounts of matching invoices between NS and ICRM
     const nsIndex = {}; filteredNsData.forEach((row) => { const key = normalize(row[nsMap.invoiceNumber]); if (key) nsIndex[key] = row; });
     const icrmIndex = {}; icrmData.forEach((row) => { const key = normalize(row[icrmMap.invoiceNumber]); if (key) icrmIndex[key] = row; });
+
+    let nsMultiplier = 1;
+    let icrmMultiplier = 1;
+
+    // Sample up to 50 matched invoices to detect scale mismatch
+    const matchedKeys = Object.keys(nsIndex).filter((k) => icrmIndex[k]);
+    if (matchedKeys.length > 0) {
+      const sampleKeys = matchedKeys.slice(0, 50);
+      const ratios = [];
+      sampleKeys.forEach((key) => {
+        const nsAmt = Math.abs(parseNum(nsIndex[key][nsMap.amount]));
+        const icrmAmt = Math.abs(parseNum(icrmIndex[key][icrmMap.amount]));
+        if (nsAmt > 0 && icrmAmt > 0) {
+          ratios.push(icrmAmt / nsAmt);
+        }
+      });
+      if (ratios.length > 3) {
+        // Get median ratio
+        ratios.sort((a, b) => a - b);
+        const medianRatio = ratios[Math.floor(ratios.length / 2)];
+        // If NS amounts are ~100x smaller than ICRM, NS was likely divided by 100
+        if (medianRatio > 80 && medianRatio < 120) {
+          nsMultiplier = 100;
+        }
+        // If ICRM amounts are ~100x smaller than NS
+        else if (medianRatio > 0.008 && medianRatio < 0.012) {
+          icrmMultiplier = 100;
+        }
+      }
+    }
+
+    const toNum = (v, multiplier) => Math.abs((parseNum(v)) * multiplier);
+
     const allKeys = new Set([...Object.keys(nsIndex), ...Object.keys(icrmIndex)]);
     const rows = [];
 
@@ -429,13 +465,13 @@ export default function App() {
       const ns = nsIndex[key]; const icrm = icrmIndex[key];
       const rec = { invoiceNumber: key, issues: [] };
       if (ns && !icrm) {
-        Object.assign(rec, { type: "netsuite_only", nsAmount: toNum(ns[nsMap.amount]), icrmAmount: null, nsDate: ns[nsMap.date] || "", icrmDate: "", nsCustomer: ns[nsMap.customer] || "", icrmCustomer: "" });
+        Object.assign(rec, { type: "netsuite_only", nsAmount: toNum(ns[nsMap.amount], nsMultiplier), icrmAmount: null, nsDate: ns[nsMap.date] || "", icrmDate: "", nsCustomer: ns[nsMap.customer] || "", icrmCustomer: "" });
         rec.diff = rec.nsAmount; rec.issues.push("Missing in ICRM");
       } else if (!ns && icrm) {
-        Object.assign(rec, { type: "icrm_only", nsAmount: null, icrmAmount: toNum(icrm[icrmMap.amount]), nsDate: "", icrmDate: icrm[icrmMap.date] || "", nsCustomer: "", icrmCustomer: icrm[icrmMap.customer] || "" });
-        rec.diff = -rec.icrmAmount; rec.issues.push("Missing in NetSuite");
+        Object.assign(rec, { type: "icrm_only", nsAmount: null, icrmAmount: toNum(icrm[icrmMap.amount], icrmMultiplier), nsDate: "", icrmDate: icrm[icrmMap.date] || "", nsCustomer: "", icrmCustomer: icrm[icrmMap.customer] || "" });
+        rec.diff = rec.icrmAmount; rec.issues.push("Missing in NetSuite");
       } else {
-        rec.nsAmount = toNum(ns[nsMap.amount]); rec.icrmAmount = toNum(icrm[icrmMap.amount]);
+        rec.nsAmount = toNum(ns[nsMap.amount], nsMultiplier); rec.icrmAmount = toNum(icrm[icrmMap.amount], icrmMultiplier);
         rec.diff = +(rec.nsAmount - rec.icrmAmount).toFixed(2);
         rec.nsDate = ns[nsMap.date] || ""; rec.icrmDate = icrm[icrmMap.date] || "";
         rec.nsCustomer = ns[nsMap.customer] || ""; rec.icrmCustomer = icrm[icrmMap.customer] || "";
