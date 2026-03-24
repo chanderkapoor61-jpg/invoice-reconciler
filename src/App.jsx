@@ -338,50 +338,43 @@ export default function App() {
 
   const [loading, setLoading] = useState(null); // null | "ns" | "icrm"
 
-  const handleXLSX = (setter, headerSetter, dataSetter, mapSetter) => (e) => {
+  const handleSmartFile = (setter, headerSetter, dataSetter, mapSetter, source) => (e) => {
     const file = e.target.files[0]; if (!file) return;
-    setLoading("ns");
+    const isCSV = file.name.toLowerCase().endsWith(".csv");
+    setLoading(source);
     setter(file.name + " (loading...)");
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        // Use setTimeout to let the UI update with loading state before heavy parsing
-        setTimeout(() => {
-          try {
-            const rows = parseXLSX(new Uint8Array(ev.target.result));
-            setter(file.name);
-            dataSetter(rows);
-            if (rows.length) { const h = Object.keys(rows[0]); headerSetter(h); autoMapHeaders(h, mapSetter, "ns"); }
-            else { setter(file.name + " (0 rows — check if correct sheet)"); }
-          } catch (err) {
-            console.error("XLSX parse error:", err);
-            setter(file.name + " (parse error)");
-            dataSetter([]);
-          }
-          setLoading(null);
-        }, 50);
-      } catch (err) {
-        console.error("XLSX read error:", err);
-        setter(file.name + " (error)");
-        setLoading(null);
-      }
-    };
-    reader.onerror = () => { setter(file.name + " (read error)"); setLoading(null); };
-    reader.readAsArrayBuffer(file);
-  };
 
-  const handleCSV = (setter, headerSetter, dataSetter, mapSetter) => (e) => {
-    const file = e.target.files[0]; if (!file) return;
-    setLoading("icrm");
     const reader = new FileReader();
     reader.onload = (ev) => {
-      setter(file.name); const rows = parseCSV(ev.target.result);
-      dataSetter(rows);
-      if (rows.length) { const h = Object.keys(rows[0]); headerSetter(h); autoMapHeaders(h, mapSetter, "icrm"); }
-      setLoading(null);
+      setTimeout(() => {
+        try {
+          let rows;
+          if (isCSV) {
+            rows = parseCSV(ev.target.result);
+          } else {
+            rows = parseXLSX(new Uint8Array(ev.target.result));
+          }
+          setter(file.name);
+          dataSetter(rows);
+          if (rows.length) {
+            const h = Object.keys(rows[0]);
+            headerSetter(h);
+            autoMapHeaders(h, mapSetter, source);
+          } else {
+            setter(file.name + " (0 rows found)");
+          }
+        } catch (err) {
+          console.error("Parse error:", err);
+          setter(file.name + " (parse error — try CSV)");
+          dataSetter([]);
+        }
+        setLoading(null);
+      }, 50);
     };
     reader.onerror = () => { setter(file.name + " (read error)"); setLoading(null); };
-    reader.readAsText(file);
+
+    if (isCSV) reader.readAsText(file);
+    else reader.readAsArrayBuffer(file);
   };
 
   const loadSample = () => {
@@ -539,7 +532,7 @@ export default function App() {
               <div style={{ width: 40, height: 40, borderRadius: 12, background: "linear-gradient(135deg, #6366f1, #ec4899)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>⇄</div>
               <h1 style={{ fontFamily: "var(--font-display)", fontSize: 28, fontWeight: 900, letterSpacing: "-.02em", background: "linear-gradient(135deg, #6366f1, #ec4899)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Invoice Reconciler</h1>
             </div>
-            <p style={{ color: "var(--text-muted)", fontSize: 15, maxWidth: 500, margin: "0 auto" }}>Compare NetSuite ERP invoices (.xlsx) against ICRM records (.csv). Upload both files to begin.</p>
+            <p style={{ color: "var(--text-muted)", fontSize: 15, maxWidth: 500, margin: "0 auto" }}>Compare NetSuite ERP invoices against ICRM records. Supports both .xlsx and .csv files.</p>
             {hasSavedMapping && (
               <div style={{ marginTop: 12, padding: "8px 16px", background: "#10b98115", borderRadius: 8, display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, color: "#10b981" }}>
                 ✓ Previous column mappings saved — they'll auto-apply on upload
@@ -548,8 +541,8 @@ export default function App() {
             )}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 32 }}>
-            {[{ ref: nsRef, raw: nsRaw, data: nsData, color: COLORS.ns, label: "NetSuite", sub: "ERP Revenue Invoices (.xlsx)", accept: ".xlsx,.xls", handler: handleXLSX(setNsRaw, setNsHeaders, setNsData, setNsMap), uploadLabel: "Click to upload Excel (.xlsx)", loadingKey: "ns" },
-              { ref: icrmRef, raw: icrmRaw, data: icrmData, color: COLORS.icrm, label: "ICRM", sub: "Backend Invoice Records (.csv)", accept: ".csv", handler: handleCSV(setIcrmRaw, setIcrmHeaders, setIcrmData, setIcrmMap), uploadLabel: "Click to upload CSV", loadingKey: "icrm" }
+            {[{ ref: nsRef, raw: nsRaw, data: nsData, color: COLORS.ns, label: "NetSuite", sub: "ERP Revenue Invoices (.xlsx / .csv)", accept: ".xlsx,.xls,.csv", handler: handleSmartFile(setNsRaw, setNsHeaders, setNsData, setNsMap, "ns"), uploadLabel: "Click to upload Excel or CSV", loadingKey: "ns" },
+              { ref: icrmRef, raw: icrmRaw, data: icrmData, color: COLORS.icrm, label: "ICRM", sub: "Backend Invoice Records (.csv / .xlsx)", accept: ".csv,.xlsx,.xls", handler: handleSmartFile(setIcrmRaw, setIcrmHeaders, setIcrmData, setIcrmMap, "icrm"), uploadLabel: "Click to upload CSV or Excel", loadingKey: "icrm" }
             ].map((src, i) => (
               <div key={i} className={`fade-in stagger-${i + 1}`} onClick={() => !src.raw && src.ref.current?.click()}
                 style={{ background: "var(--card)", borderRadius: 16, padding: 32, border: `1.5px dashed ${src.raw ? src.color : "var(--border)"}`, cursor: src.raw ? "default" : "pointer", textAlign: "center", transition: "all .25s", position: "relative", overflow: "hidden" }}>
