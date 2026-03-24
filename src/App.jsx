@@ -5,28 +5,71 @@ import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveCo
 // ─── XLSX Parser ──────────────────────────────────────────
 function parseXLSX(buffer) {
   const workbook = XLSX.read(buffer, { type: "array", cellDates: false, cellNF: true });
-  const sheetName = workbook.SheetNames[0];
-  const sheet = workbook.Sheets[sheetName];
+
+  // Find the first non-empty sheet
+  let sheetName = workbook.SheetNames[0];
+  let sheet = workbook.Sheets[sheetName];
+  for (const name of workbook.SheetNames) {
+    const s = workbook.Sheets[name];
+    if (s && s["!ref"]) { sheetName = name; sheet = s; break; }
+  }
+
   const ref = sheet["!ref"];
   if (!ref) return [];
-  const dateFormats = /[dDmMyYhHsS]/;
-  const dateColumns = new Set();
-  Object.keys(sheet).forEach((cellAddr) => {
-    if (cellAddr.startsWith("!")) return;
-    const cell = sheet[cellAddr];
-    if (cell && cell.z && dateFormats.test(cell.z) && !cell.z.includes("#") && !cell.z.includes("0")) {
-      dateColumns.add(cellAddr.replace(/[0-9]/g, ""));
-    }
-  });
-  const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: "", raw: true });
-  const formattedRows = XLSX.utils.sheet_to_json(sheet, { defval: "", raw: false });
+
   const range = XLSX.utils.decode_range(ref);
+  const totalCells = (range.e.r - range.s.r) * (range.e.c - range.s.c);
+  const isLargeFile = totalCells > 500000; // ~500K+ cells = large file
+
+  // For large files, skip expensive per-cell date format detection
+  // Instead, sample first 100 rows to detect date columns
+  const dateColumns = new Set();
+  if (!isLargeFile) {
+    const dateFormats = /[dDmMyYhHsS]/;
+    Object.keys(sheet).forEach((cellAddr) => {
+      if (cellAddr.startsWith("!")) return;
+      const cell = sheet[cellAddr];
+      if (cell && cell.z && dateFormats.test(cell.z) && !cell.z.includes("#") && !cell.z.includes("0")) {
+        dateColumns.add(cellAddr.replace(/[0-9]/g, ""));
+      }
+    });
+  } else {
+    // Sample first 100 data rows for date format detection
+    const dateFormats = /[dDmMyYhHsS]/;
+    const sampleRows = Math.min(range.s.r + 101, range.e.r + 1);
+    for (let r = range.s.r + 1; r < sampleRows; r++) {
+      for (let c = range.s.c; c <= range.e.c; c++) {
+        const cellAddr = XLSX.utils.encode_cell({ r, c });
+        const cell = sheet[cellAddr];
+        if (cell && cell.z && dateFormats.test(cell.z) && !cell.z.includes("#") && !cell.z.includes("0")) {
+          dateColumns.add(XLSX.utils.encode_col(c));
+        }
+      }
+    }
+  }
+
+  // Build header map
   const headerMap = {};
   for (let c = range.s.c; c <= range.e.c; c++) {
     const cellAddr = XLSX.utils.encode_cell({ r: range.s.r, c });
     const cell = sheet[cellAddr];
     if (cell && cell.v != null) headerMap[String(cell.v)] = XLSX.utils.encode_col(c);
   }
+
+  // For large files, only do a single parse pass (raw: true) to save memory
+  if (isLargeFile && dateColumns.size === 0) {
+    const rows = XLSX.utils.sheet_to_json(sheet, { defval: "", raw: true });
+    return rows.map((row) => {
+      const obj = {};
+      Object.keys(row).forEach((k) => { obj[k] = String(row[k] ?? ""); });
+      return obj;
+    });
+  }
+
+  // Standard two-pass for smaller files or files with date columns
+  const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: "", raw: true });
+  const formattedRows = XLSX.utils.sheet_to_json(sheet, { defval: "", raw: false });
+
   return rawRows.map((rawRow, i) => {
     const fmtRow = formattedRows[i] || {};
     const obj = {};
@@ -36,6 +79,14 @@ function parseXLSX(buffer) {
     });
     return obj;
   });
+}
+
+// Get sheet names from a workbook buffer
+function getSheetNames(buffer) {
+  try {
+    const wb = XLSX.read(buffer, { type: "array", bookSheets: true });
+    return wb.SheetNames || [];
+  } catch { return []; }
 }
 
 // ─── CSV Parser ───────────────────────────────────────────
@@ -285,25 +336,51 @@ export default function App() {
     mapSetter(auto);
   };
 
+  const [loading, setLoading] = useState(null); // null | "ns" | "icrm"
+
   const handleXLSX = (setter, headerSetter, dataSetter, mapSetter) => (e) => {
     const file = e.target.files[0]; if (!file) return;
+    setLoading("ns");
+    setter(file.name + " (loading...)");
     const reader = new FileReader();
     reader.onload = (ev) => {
-      setter(file.name); const rows = parseXLSX(new Uint8Array(ev.target.result));
-      dataSetter(rows);
-      if (rows.length) { const h = Object.keys(rows[0]); headerSetter(h); autoMapHeaders(h, mapSetter, "ns"); }
+      try {
+        // Use setTimeout to let the UI update with loading state before heavy parsing
+        setTimeout(() => {
+          try {
+            const rows = parseXLSX(new Uint8Array(ev.target.result));
+            setter(file.name);
+            dataSetter(rows);
+            if (rows.length) { const h = Object.keys(rows[0]); headerSetter(h); autoMapHeaders(h, mapSetter, "ns"); }
+            else { setter(file.name + " (0 rows — check if correct sheet)"); }
+          } catch (err) {
+            console.error("XLSX parse error:", err);
+            setter(file.name + " (parse error)");
+            dataSetter([]);
+          }
+          setLoading(null);
+        }, 50);
+      } catch (err) {
+        console.error("XLSX read error:", err);
+        setter(file.name + " (error)");
+        setLoading(null);
+      }
     };
+    reader.onerror = () => { setter(file.name + " (read error)"); setLoading(null); };
     reader.readAsArrayBuffer(file);
   };
 
   const handleCSV = (setter, headerSetter, dataSetter, mapSetter) => (e) => {
     const file = e.target.files[0]; if (!file) return;
+    setLoading("icrm");
     const reader = new FileReader();
     reader.onload = (ev) => {
       setter(file.name); const rows = parseCSV(ev.target.result);
       dataSetter(rows);
       if (rows.length) { const h = Object.keys(rows[0]); headerSetter(h); autoMapHeaders(h, mapSetter, "icrm"); }
+      setLoading(null);
     };
+    reader.onerror = () => { setter(file.name + " (read error)"); setLoading(null); };
     reader.readAsText(file);
   };
 
@@ -471,8 +548,8 @@ export default function App() {
             )}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 32 }}>
-            {[{ ref: nsRef, raw: nsRaw, data: nsData, color: COLORS.ns, label: "NetSuite", sub: "ERP Revenue Invoices (.xlsx)", accept: ".xlsx,.xls", handler: handleXLSX(setNsRaw, setNsHeaders, setNsData, setNsMap), uploadLabel: "Click to upload Excel (.xlsx)" },
-              { ref: icrmRef, raw: icrmRaw, data: icrmData, color: COLORS.icrm, label: "ICRM", sub: "Backend Invoice Records (.csv)", accept: ".csv", handler: handleCSV(setIcrmRaw, setIcrmHeaders, setIcrmData, setIcrmMap), uploadLabel: "Click to upload CSV" }
+            {[{ ref: nsRef, raw: nsRaw, data: nsData, color: COLORS.ns, label: "NetSuite", sub: "ERP Revenue Invoices (.xlsx)", accept: ".xlsx,.xls", handler: handleXLSX(setNsRaw, setNsHeaders, setNsData, setNsMap), uploadLabel: "Click to upload Excel (.xlsx)", loadingKey: "ns" },
+              { ref: icrmRef, raw: icrmRaw, data: icrmData, color: COLORS.icrm, label: "ICRM", sub: "Backend Invoice Records (.csv)", accept: ".csv", handler: handleCSV(setIcrmRaw, setIcrmHeaders, setIcrmData, setIcrmMap), uploadLabel: "Click to upload CSV", loadingKey: "icrm" }
             ].map((src, i) => (
               <div key={i} className={`fade-in stagger-${i + 1}`} onClick={() => !src.raw && src.ref.current?.click()}
                 style={{ background: "var(--card)", borderRadius: 16, padding: 32, border: `1.5px dashed ${src.raw ? src.color : "var(--border)"}`, cursor: src.raw ? "default" : "pointer", textAlign: "center", transition: "all .25s", position: "relative", overflow: "hidden" }}>
@@ -481,7 +558,7 @@ export default function App() {
                 <div style={{ fontSize: 36, marginBottom: 12, opacity: src.raw ? 1 : 0.3 }}>{src.raw ? "✓" : "📄"}</div>
                 <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 16, color: src.color, marginBottom: 4 }}>{src.label}</div>
                 <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>{src.sub}</div>
-                {src.raw ? (<div><div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text)", marginBottom: 4 }}>{src.raw}</div><div style={{ fontSize: 11, color: "var(--text-muted)" }}>{src.data.length} rows</div><button onClick={(e) => { e.stopPropagation(); src.ref.current?.click(); }} style={{ marginTop: 10, padding: "5px 14px", borderRadius: 6, border: `1px solid ${src.color}44`, background: "transparent", color: src.color, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Replace</button></div>
+                {src.raw ? (<div><div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text)", marginBottom: 4 }}>{src.raw}</div><div style={{ fontSize: 11, color: "var(--text-muted)" }}>{loading === src.loadingKey ? "⏳ Parsing file..." : `${src.data.length} rows`}</div><button onClick={(e) => { e.stopPropagation(); src.ref.current?.click(); }} style={{ marginTop: 10, padding: "5px 14px", borderRadius: 6, border: `1px solid ${src.color}44`, background: "transparent", color: src.color, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Replace</button></div>
                 ) : (<div style={{ fontSize: 13, color: "var(--text-muted)" }}>{src.uploadLabel}</div>)}
               </div>
             ))}
