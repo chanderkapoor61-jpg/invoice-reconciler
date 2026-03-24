@@ -301,6 +301,51 @@ export default function App() {
     const normalize = (v) => (v || "").toString().trim().toUpperCase();
     const toNum = (v) => parseFloat((v || "0").toString().replace(/[^0-9.\-]/g, "")) || 0;
 
+    // Smart date normalizer: converts various formats to YYYY-MM-DD for comparison
+    // Handles: dd/mm/yyyy, dd-mm-yyyy, mm/dd/yy, yyyy-mm-dd, d/m/yy, etc.
+    const normalizeDate = (dateStr) => {
+      if (!dateStr) return "";
+      const s = dateStr.toString().trim();
+      if (!s) return "";
+
+      // Try YYYY-MM-DD or YYYY/MM/DD (ISO format — already standard)
+      const isoMatch = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+      if (isoMatch) {
+        return `${isoMatch[1]}-${isoMatch[2].padStart(2, "0")}-${isoMatch[3].padStart(2, "0")}`;
+      }
+
+      // Try DD-MM-YYYY or DD/MM/YYYY (Indian/European format)
+      const dmy4 = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+      if (dmy4) {
+        const [, a, b, y] = dmy4;
+        // Assume dd/mm/yyyy (Indian format) since user confirmed this
+        return `${y}-${b.padStart(2, "0")}-${a.padStart(2, "0")}`;
+      }
+
+      // Try M/D/YY or D/M/YY (short year — Excel often exports this)
+      const short = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2})$/);
+      if (short) {
+        const [, a, b, yy] = short;
+        const year = parseInt(yy) > 50 ? `19${yy}` : `20${yy}`;
+        // Excel US format: m/d/yy — but our data is dd/mm/yyyy
+        // Since NetSuite Excel uses US locale: a=month, b=day
+        // But we need to handle both cases. If a > 12, it must be day.
+        // If b > 12, a must be month. If both <= 12, assume US (m/d/yy) from Excel.
+        let month, day;
+        if (parseInt(a) > 12) {
+          day = a; month = b; // a is too big for month, must be day
+        } else if (parseInt(b) > 12) {
+          month = a; day = b; // b is too big for day in mm slot, so a=month b=day
+        } else {
+          // Ambiguous — Excel typically exports as m/d/yy
+          month = a; day = b;
+        }
+        return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+      }
+
+      return s; // Return as-is if no pattern matches
+    };
+
     const nsIndex = {};
     nsData.forEach((row) => {
       const key = normalize(row[nsMap.invoiceNumber]);
@@ -350,7 +395,7 @@ export default function App() {
         rec.icrmCustomer = icrm[icrmMap.customer] || "";
 
         if (Math.abs(rec.diff) > 0.01) rec.issues.push("Amount mismatch");
-        if (nsMap.date && icrmMap.date && rec.nsDate && rec.icrmDate && normalize(rec.nsDate) !== normalize(rec.icrmDate))
+        if (nsMap.date && icrmMap.date && rec.nsDate && rec.icrmDate && normalizeDate(rec.nsDate) !== normalizeDate(rec.icrmDate))
           rec.issues.push("Date mismatch");
         if (nsMap.customer && icrmMap.customer && rec.nsCustomer && rec.icrmCustomer && normalize(rec.nsCustomer) !== normalize(rec.icrmCustomer))
           rec.issues.push("Customer mismatch");
