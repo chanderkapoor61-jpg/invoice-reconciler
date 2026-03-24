@@ -3,21 +3,23 @@ import * as XLSX from "xlsx";
 
 // ─── XLSX Parser ──────────────────────────────────────────
 function parseXLSX(buffer) {
-  // Don't use cellDates — it creates JS Date objects that shift due to timezone
-  // Instead, read raw values and format date serial numbers manually
-  const workbook = XLSX.read(buffer, { type: "array", cellDates: false });
+  const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
   const sheetName = workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
-
-  // Get raw JSON rows
-  const rows = XLSX.utils.sheet_to_json(sheet, { defval: "", raw: false });
-
-  // sheet_to_json with raw:false gives us formatted strings for all cells
-  // including dates formatted as they appear in Excel
+  const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+  // Normalize: convert Date objects to strings, numbers stay as-is
   return rows.map((row) => {
     const obj = {};
     Object.keys(row).forEach((k) => {
-      obj[k] = String(row[k] ?? "");
+      const v = row[k];
+      if (v instanceof Date) {
+        const y = v.getFullYear();
+        const m = String(v.getMonth() + 1).padStart(2, "0");
+        const d = String(v.getDate()).padStart(2, "0");
+        obj[k] = `${y}-${m}-${d}`;
+      } else {
+        obj[k] = String(v);
+      }
     });
     return obj;
   });
