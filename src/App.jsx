@@ -338,7 +338,7 @@ export default function App() {
     setHasSavedMapping(true);
     const normalize = (v) => (v || "").toString().trim().toUpperCase();
 
-    // Robust number parser: handles "Rs. 14.59", "₹1,748.08", "(14.59)", "-Rs.14.59", "$1,200.00", etc.
+    // Robust number parser: handles "Rs.12.00", "Rs. 14.59", "₹1,748.08", "(14.59)", "-Rs.14.59", "$1,200.00", etc.
     const parseNum = (v) => {
       if (v == null) return 0;
       let s = v.toString().trim();
@@ -347,23 +347,20 @@ export default function App() {
       let negative = false;
       if (s.startsWith("(") && s.endsWith(")")) { negative = true; s = s.slice(1, -1); }
       if (s.includes("-")) { negative = true; }
-      // Strip everything except digits, dots, and commas
-      s = s.replace(/[^0-9.,]/g, "");
+      // Strip known currency prefixes FIRST (before general cleanup)
+      // This prevents "Rs." dot from being treated as a decimal point
+      s = s.replace(/^[^0-9()\-]*/, ""); // strip any leading non-numeric chars (Rs., $, ₹, EUR, etc.)
+      s = s.replace(/[^0-9.,]/g, "");    // then strip remaining non-numeric except dots and commas
       // Handle Indian/international comma format: 1,00,000.00 or 1,000,000.00
-      // If last separator is a dot, treat dots as decimal
       const lastDot = s.lastIndexOf(".");
       const lastComma = s.lastIndexOf(",");
       if (lastDot > lastComma) {
-        // Dot is decimal separator: remove all commas
         s = s.replace(/,/g, "");
       } else if (lastComma > lastDot) {
-        // Comma might be decimal (European) or thousand separator
-        // If only one comma and 2 digits after it, treat as decimal
         const afterComma = s.length - lastComma - 1;
         if ((s.match(/,/g) || []).length === 1 && afterComma <= 2) {
           s = s.replace(",", ".");
         } else {
-          // Commas are thousand separators
           s = s.replace(/,/g, "");
         }
       }
