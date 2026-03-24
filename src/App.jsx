@@ -3,8 +3,10 @@ import * as XLSX from "xlsx";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
 // ─── XLSX Parser ──────────────────────────────────────────
+// Always reads the DISPLAYED value from Excel (what you see is what you get)
+// This ensures custom formats like "Rs. 14.36" are read as "Rs. 14.36", not "0.1436"
 function parseXLSX(buffer) {
-  const workbook = XLSX.read(buffer, { type: "array", cellDates: false, cellNF: true });
+  const workbook = XLSX.read(buffer, { type: "array", cellDates: false });
 
   // Find the first non-empty sheet
   let sheetName = workbook.SheetNames[0];
@@ -17,76 +19,16 @@ function parseXLSX(buffer) {
   const ref = sheet["!ref"];
   if (!ref) return [];
 
-  const range = XLSX.utils.decode_range(ref);
-  const totalCells = (range.e.r - range.s.r) * (range.e.c - range.s.c);
-  const isLargeFile = totalCells > 500000; // ~500K+ cells = large file
+  // Single pass: use raw: false to get displayed/formatted values for ALL cells
+  const rows = XLSX.utils.sheet_to_json(sheet, { defval: "", raw: false });
 
-  // For large files, skip expensive per-cell date format detection
-  // Instead, sample first 100 rows to detect date columns
-  const dateColumns = new Set();
-  if (!isLargeFile) {
-    const dateFormats = /[dDmMyYhHsS]/;
-    Object.keys(sheet).forEach((cellAddr) => {
-      if (cellAddr.startsWith("!")) return;
-      const cell = sheet[cellAddr];
-      if (cell && cell.z && dateFormats.test(cell.z) && !cell.z.includes("#") && !cell.z.includes("0")) {
-        dateColumns.add(cellAddr.replace(/[0-9]/g, ""));
-      }
-    });
-  } else {
-    // Sample first 100 data rows for date format detection
-    const dateFormats = /[dDmMyYhHsS]/;
-    const sampleRows = Math.min(range.s.r + 101, range.e.r + 1);
-    for (let r = range.s.r + 1; r < sampleRows; r++) {
-      for (let c = range.s.c; c <= range.e.c; c++) {
-        const cellAddr = XLSX.utils.encode_cell({ r, c });
-        const cell = sheet[cellAddr];
-        if (cell && cell.z && dateFormats.test(cell.z) && !cell.z.includes("#") && !cell.z.includes("0")) {
-          dateColumns.add(XLSX.utils.encode_col(c));
-        }
-      }
-    }
-  }
-
-  // Build header map
-  const headerMap = {};
-  for (let c = range.s.c; c <= range.e.c; c++) {
-    const cellAddr = XLSX.utils.encode_cell({ r: range.s.r, c });
-    const cell = sheet[cellAddr];
-    if (cell && cell.v != null) headerMap[String(cell.v)] = XLSX.utils.encode_col(c);
-  }
-
-  // For large files, only do a single parse pass (raw: true) to save memory
-  if (isLargeFile && dateColumns.size === 0) {
-    const rows = XLSX.utils.sheet_to_json(sheet, { defval: "", raw: true });
-    return rows.map((row) => {
-      const obj = {};
-      Object.keys(row).forEach((k) => { obj[k] = String(row[k] ?? ""); });
-      return obj;
-    });
-  }
-
-  // Standard two-pass for smaller files or files with date columns
-  const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: "", raw: true });
-  const formattedRows = XLSX.utils.sheet_to_json(sheet, { defval: "", raw: false });
-
-  return rawRows.map((rawRow, i) => {
-    const fmtRow = formattedRows[i] || {};
+  return rows.map((row) => {
     const obj = {};
-    Object.keys(rawRow).forEach((k) => {
-      const colLetter = headerMap[k];
-      obj[k] = (colLetter && dateColumns.has(colLetter)) ? String(fmtRow[k] ?? rawRow[k]) : String(rawRow[k] ?? "");
+    Object.keys(row).forEach((k) => {
+      obj[k] = String(row[k] ?? "");
     });
     return obj;
   });
-}
-
-// Get sheet names from a workbook buffer
-function getSheetNames(buffer) {
-  try {
-    const wb = XLSX.read(buffer, { type: "array", bookSheets: true });
-    return wb.SheetNames || [];
-  } catch { return []; }
 }
 
 // ─── CSV Parser ───────────────────────────────────────────
@@ -456,7 +398,7 @@ export default function App() {
     const nsIndex = {}; filteredNsData.forEach((row) => { const key = normalize(row[nsMap.invoiceNumber]); if (key) nsIndex[key] = row; });
     const icrmIndex = {}; icrmData.forEach((row) => { const key = normalize(row[icrmMap.invoiceNumber]); if (key) icrmIndex[key] = row; });
 
-    // Always convert to absolute value — ERP may show negatives, ICRM positives
+    // Convert amounts: strip currency symbols (Rs., ₹, $), commas, take absolute value
     const toNum = (v) => Math.abs(parseNum(v));
 
     const allKeys = new Set([...Object.keys(nsIndex), ...Object.keys(icrmIndex)]);
