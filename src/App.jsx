@@ -325,7 +325,7 @@ export default function App() {
     saveMappings(nsMap, icrmMap, nsFilterCol, nsFilterVal);
     setHasSavedMapping(true);
     const normalize = (v) => (v || "").toString().trim().toUpperCase();
-    const toNum = (v) => parseFloat((v || "0").toString().replace(/[^0-9.\-]/g, "")) || 0;
+    const toNum = (v) => Math.abs(parseFloat((v || "0").toString().replace(/[^0-9.\-]/g, "")) || 0);
     const normalizeDate = (dateStr) => {
       if (!dateStr) return "";
       const s = dateStr.toString().trim(); if (!s) return "";
