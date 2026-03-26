@@ -67,6 +67,7 @@ function FieldMapper({ headers, label, mapping, onMap, onConfirm, color, showFil
     { key: "amount", label: "Amount", required: true },
     { key: "date", label: "Date", required: false },
     { key: "customer", label: "Customer Name", required: false },
+    { key: "companyId", label: "Company ID", required: false },
     { key: "status", label: "Status", required: false },
   ];
   const allRequiredMapped = fields.filter((f) => f.required).every((f) => mapping[f.key]);
@@ -270,6 +271,7 @@ export default function App() {
     const amtKeys = ["amount", "invoice amount", "invoice_amount", "invoiceamount", "total", "total amount"];
     const dtKeys = ["date", "invoice date", "invoice_date", "invoicedate"];
     const custKeys = ["customer", "client", "customer name", "client name", "customer_name", "client_name"];
+    const companyIdKeys = ["company id_erp", "company id", "company_id", "companyid", "client id", "client_id", "clientid", "entity id", "entity_id"];
     const statusKeys = ["status", "invoice status", "invoice_status"];
     h.forEach((col) => {
       const lc = col.toLowerCase().trim();
@@ -277,6 +279,7 @@ export default function App() {
       if (amtKeys.includes(lc)) auto.amount = col;
       if (dtKeys.includes(lc)) auto.date = col;
       if (custKeys.includes(lc)) auto.customer = col;
+      if (companyIdKeys.includes(lc)) auto.companyId = col;
       if (statusKeys.includes(lc)) auto.status = col;
     });
     mapSetter(auto);
@@ -301,14 +304,27 @@ export default function App() {
             rows = parseXLSX(new Uint8Array(ev.target.result));
           }
 
-          // For NetSuite files: auto Find & Replace "Rs. " and "Rs." with nothing
-          // This cleans up currency prefixes before any processing
+          // For NetSuite files: auto cleanup and derived columns
           if (source === "ns") {
             rows = rows.map((row) => {
               const cleaned = {};
               Object.keys(row).forEach((k) => {
                 cleaned[k] = row[k].replace(/Rs\.\s?/gi, "");
               });
+
+              // Auto-create "Company ID_ERP" from any "Entity (Line)" or "Entity (Lin" column
+              // Extracts the part before the first space: "4536126 SUSHANT TYAGI" → "4536126"
+              const entityCol = Object.keys(cleaned).find((k) =>
+                k.toLowerCase().startsWith("entity (lin")
+              );
+              if (entityCol && cleaned[entityCol]) {
+                const val = cleaned[entityCol].trim();
+                const firstSpace = val.indexOf(" ");
+                cleaned["Company ID_ERP"] = firstSpace > 0 ? val.substring(0, firstSpace) : val;
+              } else {
+                cleaned["Company ID_ERP"] = "";
+              }
+
               return cleaned;
             });
           }
@@ -429,7 +445,7 @@ export default function App() {
       const key = normalize(row[icrmMap.invoiceNumber]);
       if (!key) return;
       if (!icrmIndex[key]) {
-        icrmIndex[key] = { _date: row[icrmMap.date] || "", _customer: row[icrmMap.customer] || "", _totalAmount: Math.abs(parseNum(row[icrmMap.amount])), _lineCount: 1 };
+        icrmIndex[key] = { _date: row[icrmMap.date] || "", _customer: row[icrmMap.customer] || "", _companyId: row[icrmMap.companyId] || "", _totalAmount: Math.abs(parseNum(row[icrmMap.amount])), _lineCount: 1 };
       } else {
         icrmIndex[key]._totalAmount += Math.abs(parseNum(row[icrmMap.amount]));
         icrmIndex[key]._lineCount += 1;
@@ -441,7 +457,7 @@ export default function App() {
         const key = normalize(row[icrm2Map.invoiceNumber]);
         if (!key) return;
         if (!icrmIndex[key]) {
-          icrmIndex[key] = { _date: row[icrm2Map.date] || "", _customer: row[icrm2Map.customer] || "", _totalAmount: Math.abs(parseNum(row[icrm2Map.amount])), _lineCount: 1 };
+          icrmIndex[key] = { _date: row[icrm2Map.date] || "", _customer: row[icrm2Map.customer] || "", _companyId: row[icrm2Map.companyId] || "", _totalAmount: Math.abs(parseNum(row[icrm2Map.amount])), _lineCount: 1 };
         } else {
           icrmIndex[key]._totalAmount += Math.abs(parseNum(row[icrm2Map.amount]));
           icrmIndex[key]._lineCount += 1;
@@ -458,10 +474,10 @@ export default function App() {
       const ns = nsIndex[key]; const icrm = icrmIndex[key];
       const rec = { invoiceNumber: key, issues: [] };
       if (ns && !icrm) {
-        Object.assign(rec, { type: "netsuite_only", nsAmount: toNum(ns), icrmAmount: null, nsDate: ns[nsMap.date] || "", icrmDate: "", nsCustomer: ns[nsMap.customer] || "", icrmCustomer: "", nsLines: ns._lineCount, icrmLines: 0 });
+        Object.assign(rec, { type: "netsuite_only", nsAmount: toNum(ns), icrmAmount: null, nsDate: ns[nsMap.date] || "", icrmDate: "", nsCustomer: ns[nsMap.customer] || "", icrmCustomer: "", nsCompanyId: ns[nsMap.companyId] || "", icrmCompanyId: "", nsLines: ns._lineCount, icrmLines: 0 });
         rec.diff = rec.nsAmount; rec.issues.push("Missing in ICRM");
       } else if (!ns && icrm) {
-        Object.assign(rec, { type: "icrm_only", nsAmount: null, icrmAmount: toNum(icrm), nsDate: "", icrmDate: icrm._date || "", nsCustomer: "", icrmCustomer: icrm._customer || "", nsLines: 0, icrmLines: icrm._lineCount });
+        Object.assign(rec, { type: "icrm_only", nsAmount: null, icrmAmount: toNum(icrm), nsDate: "", icrmDate: icrm._date || "", nsCustomer: "", icrmCustomer: icrm._customer || "", nsCompanyId: "", icrmCompanyId: icrm._companyId || "", nsLines: 0, icrmLines: icrm._lineCount });
         rec.diff = rec.icrmAmount; rec.issues.push("Missing in NetSuite");
       } else {
         rec.nsAmount = toNum(ns); rec.icrmAmount = toNum(icrm);
@@ -469,9 +485,11 @@ export default function App() {
         rec.diff = +(rec.nsAmount - rec.icrmAmount).toFixed(2);
         rec.nsDate = ns[nsMap.date] || ""; rec.icrmDate = icrm._date || "";
         rec.nsCustomer = ns[nsMap.customer] || ""; rec.icrmCustomer = icrm._customer || "";
+        rec.nsCompanyId = ns[nsMap.companyId] || ""; rec.icrmCompanyId = icrm._companyId || "";
         if (Math.abs(rec.diff) > 0.01) rec.issues.push("Amount mismatch");
         if (rec.nsDate && rec.icrmDate && normalizeDate(rec.nsDate) !== normalizeDate(rec.icrmDate)) rec.issues.push("Date mismatch");
         if (rec.nsCustomer && rec.icrmCustomer && normalize(rec.nsCustomer) !== normalize(rec.icrmCustomer)) rec.issues.push("Customer mismatch");
+        if (rec.nsCompanyId && rec.icrmCompanyId && normalize(rec.nsCompanyId) !== normalize(rec.icrmCompanyId)) rec.issues.push("Company ID mismatch");
         if (rec.issues.length === 0) rec.type = "matched";
         else if (rec.issues.length === 1) { rec.type = rec.issues[0] === "Amount mismatch" ? "amount_mismatch" : rec.issues[0] === "Date mismatch" ? "date_mismatch" : "customer_mismatch"; }
         else rec.type = "multi_issue";
@@ -531,8 +549,8 @@ export default function App() {
 
   const buildCSVText = () => {
     if (!filtered.length) return "";
-    const h = ["Invoice Number", "Status", "NetSuite Amount", "ICRM Amount", "Difference", "NS Date", "ICRM Date", "NS Customer", "ICRM Customer", "Issues"];
-    return [h.join(","), ...filtered.map((r) => [r.invoiceNumber, r.type, r.nsAmount ?? "", r.icrmAmount ?? "", r.diff, r.nsDate, r.icrmDate, r.nsCustomer, r.icrmCustomer, (r.issues || []).join("; ")].map((v) => `"${v}"`).join(","))].join("\n");
+    const h = ["Invoice Number", "Status", "NetSuite Amount", "ICRM Amount", "Difference", "NS Date", "ICRM Date", "NS Customer", "ICRM Customer", "NS Company ID", "ICRM Company ID", "Issues"];
+    return [h.join(","), ...filtered.map((r) => [r.invoiceNumber, r.type, r.nsAmount ?? "", r.icrmAmount ?? "", r.diff, r.nsDate, r.icrmDate, r.nsCustomer, r.icrmCustomer, r.nsCompanyId || "", r.icrmCompanyId || "", (r.issues || []).join("; ")].map((v) => `"${v}"`).join(","))].join("\n");
   };
   const exportCSV = () => { const csv = buildCSVText(); if (!csv) return; const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = "reconciliation_report.csv"; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); };
   const copyCSV = async () => { const csv = buildCSVText(); if (!csv) return; try { await navigator.clipboard.writeText(csv); } catch { const ta = document.createElement("textarea"); ta.value = csv; ta.style.cssText = "position:fixed;left:-9999px"; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta); } setCopyStatus("copied"); setTimeout(() => setCopyStatus("idle"), 2500); };
@@ -745,6 +763,7 @@ export default function App() {
                           {row.nsLines > 1 && <div>Line Items: <span style={{ color: "#f59e0b", fontWeight: 600 }}>{row.nsLines} lines aggregated</span></div>}
                           <div>Date: <span style={{ color: "var(--text)" }}>{row.nsDate || "N/A"}</span></div>
                           <div>Customer: <span style={{ color: "var(--text)" }}>{row.nsCustomer || "N/A"}</span></div>
+                          <div>Company ID: <span style={{ color: "var(--text)", fontFamily: "var(--font-mono)" }}>{row.nsCompanyId || "N/A"}</span></div>
                         </div>
                       </div>
                       <div>
@@ -754,6 +773,7 @@ export default function App() {
                           {row.icrmLines > 1 && <div>Line Items: <span style={{ color: "#f59e0b", fontWeight: 600 }}>{row.icrmLines} lines aggregated</span></div>}
                           <div>Date: <span style={{ color: "var(--text)" }}>{row.icrmDate || "N/A"}</span></div>
                           <div>Customer: <span style={{ color: "var(--text)" }}>{row.icrmCustomer || "N/A"}</span></div>
+                          <div>Company ID: <span style={{ color: "var(--text)", fontFamily: "var(--font-mono)" }}>{row.icrmCompanyId || "N/A"}</span></div>
                         </div>
                       </div>
                     </div>
