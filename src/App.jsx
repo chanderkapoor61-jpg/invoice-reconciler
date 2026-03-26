@@ -3,8 +3,8 @@ import * as XLSX from "xlsx";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
 // ─── XLSX Parser ──────────────────────────────────────────
-// Always reads the DISPLAYED value from Excel (what you see is what you get)
-// This ensures custom formats like "Rs. 14.36" are read as "Rs. 14.36", not "0.1436"
+// Reads BOTH raw and formatted values, stores both so the reconciliation engine
+// can pick the correct one. This handles Excel custom formats that scale values.
 function parseXLSX(buffer) {
   const workbook = XLSX.read(buffer, { type: "array", cellDates: false });
 
@@ -19,13 +19,22 @@ function parseXLSX(buffer) {
   const ref = sheet["!ref"];
   if (!ref) return [];
 
-  // Single pass: use raw: false to get displayed/formatted values for ALL cells
-  const rows = XLSX.utils.sheet_to_json(sheet, { defval: "", raw: false });
+  // Two passes: raw values (actual stored numbers) and formatted (displayed strings)
+  const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: "", raw: true });
+  const fmtRows = XLSX.utils.sheet_to_json(sheet, { defval: "", raw: false });
 
-  return rows.map((row) => {
+  return rawRows.map((rawRow, i) => {
+    const fmtRow = fmtRows[i] || {};
     const obj = {};
-    Object.keys(row).forEach((k) => {
-      obj[k] = String(row[k] ?? "");
+    Object.keys(rawRow).forEach((k) => {
+      const rawVal = rawRow[k];
+      const fmtVal = fmtRow[k];
+      // Store formatted value as primary (preserves "Rs. 12.00" display)
+      // but also store raw value with __raw_ prefix for amount comparison
+      obj[k] = String(fmtVal ?? rawVal ?? "");
+      if (typeof rawVal === "number") {
+        obj["__raw_" + k] = rawVal;
+      }
     });
     return obj;
   });
@@ -393,6 +402,27 @@ export default function App() {
       return s;
     };
 
+    // Smart amount parser for XLSX data: compares formatted text vs raw number
+    // and picks the one that makes sense (handles custom formats that scale values)
+    const smartParseAmount = (row, amountCol) => {
+      const fmtVal = row[amountCol]; // formatted string like "Rs. 12.00" or "12"
+      const rawVal = row["__raw_" + amountCol]; // raw number like 12 or 0.12
+      
+      const parsedFromFmt = parseNum(fmtVal);
+      
+      // If we have a raw number and a formatted value, pick the larger absolute value
+      // because custom formats can only display larger numbers from smaller raw values
+      // (e.g., raw 0.12 displayed as "Rs. 12.00" means format has ×100 scaling)
+      if (rawVal != null && typeof rawVal === "number") {
+        const absRaw = Math.abs(rawVal);
+        const absFmt = Math.abs(parsedFromFmt);
+        // Use whichever is larger — the custom format can scale up but the raw value
+        // is never larger than what it should be
+        return Math.max(absRaw, absFmt);
+      }
+      return Math.abs(parsedFromFmt);
+    };
+
     let filteredNsData = nsData;
     if (nsFilterCol && nsFilterVal) {
       filteredNsData = nsData.filter((row) => normalize(row[nsFilterCol] || "") === normalize(nsFilterVal));
@@ -404,9 +434,9 @@ export default function App() {
       const key = normalize(row[nsMap.invoiceNumber]);
       if (!key) return;
       if (!nsIndex[key]) {
-        nsIndex[key] = { ...row, _totalAmount: Math.abs(parseNum(row[nsMap.amount])), _lineCount: 1 };
+        nsIndex[key] = { ...row, _totalAmount: smartParseAmount(row, nsMap.amount), _lineCount: 1 };
       } else {
-        nsIndex[key]._totalAmount += Math.abs(parseNum(row[nsMap.amount]));
+        nsIndex[key]._totalAmount += smartParseAmount(row, nsMap.amount);
         nsIndex[key]._lineCount += 1;
       }
     });
