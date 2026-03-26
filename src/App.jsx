@@ -52,8 +52,8 @@ function parseCSV(text) {
 
 // ─── Saved Mappings (localStorage) ────────────────────────
 const STORAGE_KEY = "invoice_reconciler_mappings";
-function saveMappings(nsMap, icrmMap, nsFilterCol, nsFilterVal) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ nsMap, icrmMap, nsFilterCol, nsFilterVal, savedAt: Date.now() })); } catch {}
+function saveMappings(nsMap, icrmMap, icrm2Map, nsFilterCol, nsFilterVal) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ nsMap, icrmMap, icrm2Map, nsFilterCol, nsFilterVal, savedAt: Date.now() })); } catch {}
 }
 function loadMappings() {
   try { const raw = localStorage.getItem(STORAGE_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
@@ -218,6 +218,11 @@ export default function App() {
   const [icrmData, setIcrmData] = useState([]);
   const [nsMap, setNsMap] = useState({});
   const [icrmMap, setIcrmMap] = useState({});
+  const [icrm2Raw, setIcrm2Raw] = useState(null);
+  const [icrm2Headers, setIcrm2Headers] = useState([]);
+  const [icrm2Data, setIcrm2Data] = useState([]);
+  const [icrm2Map, setIcrm2Map] = useState({});
+  const [icrm2Confirmed, setIcrm2Confirmed] = useState(false);
   const [nsConfirmed, setNsConfirmed] = useState(false);
   const [icrmConfirmed, setIcrmConfirmed] = useState(false);
   const [results, setResults] = useState(null);
@@ -234,6 +239,7 @@ export default function App() {
   const [showCharts, setShowCharts] = useState(true);
   const nsRef = useRef();
   const icrmRef = useRef();
+  const icrm2Ref = useRef();
   const PAGE_SIZE = 20;
   const COLORS = { ns: "#6366f1", icrm: "#ec4899", match: "#10b981", warn: "#f59e0b", err: "#ef4444" };
 
@@ -249,7 +255,7 @@ export default function App() {
   const autoMapHeaders = (h, mapSetter, source) => {
     const saved = loadMappings();
     if (saved) {
-      const savedMap = source === "ns" ? saved.nsMap : saved.icrmMap;
+      const savedMap = source === "ns" ? saved.nsMap : source === "icrm" ? saved.icrmMap : saved.icrm2Map;
       const valid = {};
       Object.entries(savedMap || {}).forEach(([k, v]) => { if (h.includes(v)) valid[k] = v; });
       if (Object.keys(valid).length > 0) {
@@ -334,7 +340,7 @@ export default function App() {
 
   // ─── Reconciliation Engine ──────────────────────────────
   const runReconciliation = useCallback(() => {
-    saveMappings(nsMap, icrmMap, nsFilterCol, nsFilterVal);
+    saveMappings(nsMap, icrmMap, icrm2Map, nsFilterCol, nsFilterVal);
     setHasSavedMapping(true);
     const normalize = (v) => (v || "").toString().trim().toUpperCase();
 
@@ -405,18 +411,32 @@ export default function App() {
       }
     });
 
-    // Aggregate ICRM line items: same logic
+    // Aggregate ICRM line items from BOTH files into one combined index
     const icrmIndex = {};
+    // Process ICRM File 1
     icrmData.forEach((row) => {
       const key = normalize(row[icrmMap.invoiceNumber]);
       if (!key) return;
       if (!icrmIndex[key]) {
-        icrmIndex[key] = { ...row, _totalAmount: Math.abs(parseNum(row[icrmMap.amount])), _lineCount: 1 };
+        icrmIndex[key] = { _date: row[icrmMap.date] || "", _customer: row[icrmMap.customer] || "", _totalAmount: Math.abs(parseNum(row[icrmMap.amount])), _lineCount: 1 };
       } else {
         icrmIndex[key]._totalAmount += Math.abs(parseNum(row[icrmMap.amount]));
         icrmIndex[key]._lineCount += 1;
       }
     });
+    // Process ICRM File 2 (if uploaded) — uses its own mapping
+    if (icrm2Raw && icrm2Data.length > 0 && icrm2Map.invoiceNumber && icrm2Map.amount) {
+      icrm2Data.forEach((row) => {
+        const key = normalize(row[icrm2Map.invoiceNumber]);
+        if (!key) return;
+        if (!icrmIndex[key]) {
+          icrmIndex[key] = { _date: row[icrm2Map.date] || "", _customer: row[icrm2Map.customer] || "", _totalAmount: Math.abs(parseNum(row[icrm2Map.amount])), _lineCount: 1 };
+        } else {
+          icrmIndex[key]._totalAmount += Math.abs(parseNum(row[icrm2Map.amount]));
+          icrmIndex[key]._lineCount += 1;
+        }
+      });
+    }
 
     const toNum = (row) => row._totalAmount || 0;
 
@@ -430,17 +450,17 @@ export default function App() {
         Object.assign(rec, { type: "netsuite_only", nsAmount: toNum(ns), icrmAmount: null, nsDate: ns[nsMap.date] || "", icrmDate: "", nsCustomer: ns[nsMap.customer] || "", icrmCustomer: "", nsLines: ns._lineCount, icrmLines: 0 });
         rec.diff = rec.nsAmount; rec.issues.push("Missing in ICRM");
       } else if (!ns && icrm) {
-        Object.assign(rec, { type: "icrm_only", nsAmount: null, icrmAmount: toNum(icrm), nsDate: "", icrmDate: icrm[icrmMap.date] || "", nsCustomer: "", icrmCustomer: icrm[icrmMap.customer] || "", nsLines: 0, icrmLines: icrm._lineCount });
+        Object.assign(rec, { type: "icrm_only", nsAmount: null, icrmAmount: toNum(icrm), nsDate: "", icrmDate: icrm._date || "", nsCustomer: "", icrmCustomer: icrm._customer || "", nsLines: 0, icrmLines: icrm._lineCount });
         rec.diff = rec.icrmAmount; rec.issues.push("Missing in NetSuite");
       } else {
         rec.nsAmount = toNum(ns); rec.icrmAmount = toNum(icrm);
         rec.nsLines = ns._lineCount; rec.icrmLines = icrm._lineCount;
         rec.diff = +(rec.nsAmount - rec.icrmAmount).toFixed(2);
-        rec.nsDate = ns[nsMap.date] || ""; rec.icrmDate = icrm[icrmMap.date] || "";
-        rec.nsCustomer = ns[nsMap.customer] || ""; rec.icrmCustomer = icrm[icrmMap.customer] || "";
+        rec.nsDate = ns[nsMap.date] || ""; rec.icrmDate = icrm._date || "";
+        rec.nsCustomer = ns[nsMap.customer] || ""; rec.icrmCustomer = icrm._customer || "";
         if (Math.abs(rec.diff) > 0.01) rec.issues.push("Amount mismatch");
-        if (nsMap.date && icrmMap.date && rec.nsDate && rec.icrmDate && normalizeDate(rec.nsDate) !== normalizeDate(rec.icrmDate)) rec.issues.push("Date mismatch");
-        if (nsMap.customer && icrmMap.customer && rec.nsCustomer && rec.icrmCustomer && normalize(rec.nsCustomer) !== normalize(rec.icrmCustomer)) rec.issues.push("Customer mismatch");
+        if (rec.nsDate && rec.icrmDate && normalizeDate(rec.nsDate) !== normalizeDate(rec.icrmDate)) rec.issues.push("Date mismatch");
+        if (rec.nsCustomer && rec.icrmCustomer && normalize(rec.nsCustomer) !== normalize(rec.icrmCustomer)) rec.issues.push("Customer mismatch");
         if (rec.issues.length === 0) rec.type = "matched";
         else if (rec.issues.length === 1) { rec.type = rec.issues[0] === "Amount mismatch" ? "amount_mismatch" : rec.issues[0] === "Date mismatch" ? "date_mismatch" : "customer_mismatch"; }
         else rec.type = "multi_issue";
@@ -448,7 +468,7 @@ export default function App() {
       rows.push(rec);
     });
     setResults(rows); setStep("results"); setPage(0); setFilter("all"); setSearch("");
-  }, [nsData, icrmData, nsMap, icrmMap, nsFilterCol, nsFilterVal]);
+  }, [nsData, icrmData, icrm2Data, nsMap, icrmMap, icrm2Map, icrm2Raw, nsFilterCol, nsFilterVal]);
 
   // ─── Computed ───────────────────────────────────────────
   const filtered = useMemo(() => {
@@ -539,19 +559,20 @@ export default function App() {
               </div>
             )}
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 32 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 32 }}>
             {[{ ref: nsRef, raw: nsRaw, data: nsData, color: COLORS.ns, label: "NetSuite", sub: "ERP Revenue Invoices (.xlsx / .csv)", accept: ".xlsx,.xls,.csv", handler: handleSmartFile(setNsRaw, setNsHeaders, setNsData, setNsMap, "ns"), uploadLabel: "Click to upload Excel or CSV", loadingKey: "ns" },
-              { ref: icrmRef, raw: icrmRaw, data: icrmData, color: COLORS.icrm, label: "ICRM", sub: "Backend Invoice Records (.csv / .xlsx)", accept: ".csv,.xlsx,.xls", handler: handleSmartFile(setIcrmRaw, setIcrmHeaders, setIcrmData, setIcrmMap, "icrm"), uploadLabel: "Click to upload CSV or Excel", loadingKey: "icrm" }
+              { ref: icrmRef, raw: icrmRaw, data: icrmData, color: COLORS.icrm, label: "ICRM File 1", sub: "Invoice Records (.csv / .xlsx)", accept: ".csv,.xlsx,.xls", handler: handleSmartFile(setIcrmRaw, setIcrmHeaders, setIcrmData, setIcrmMap, "icrm"), uploadLabel: "Click to upload CSV or Excel", loadingKey: "icrm" },
+              { ref: icrm2Ref, raw: icrm2Raw, data: icrm2Data, color: "#8b5cf6", label: "ICRM File 2", sub: "Optional — different format", accept: ".csv,.xlsx,.xls", handler: handleSmartFile(setIcrm2Raw, setIcrm2Headers, setIcrm2Data, setIcrm2Map, "icrm2"), uploadLabel: "Click to upload (optional)", loadingKey: "icrm2" }
             ].map((src, i) => (
               <div key={i} className={`fade-in stagger-${i + 1}`} onClick={() => !src.raw && src.ref.current?.click()}
-                style={{ background: "var(--card)", borderRadius: 16, padding: 32, border: `1.5px dashed ${src.raw ? src.color : "var(--border)"}`, cursor: src.raw ? "default" : "pointer", textAlign: "center", transition: "all .25s", position: "relative", overflow: "hidden" }}>
+                style={{ background: "var(--card)", borderRadius: 16, padding: 28, border: `1.5px dashed ${src.raw ? src.color : "var(--border)"}`, cursor: src.raw ? "default" : "pointer", textAlign: "center", transition: "all .25s", position: "relative", overflow: "hidden" }}>
                 {src.raw && <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${src.color}, ${src.color}88)` }} />}
                 <input type="file" ref={src.ref} accept={src.accept} onChange={src.handler} />
-                <div style={{ fontSize: 36, marginBottom: 12, opacity: src.raw ? 1 : 0.3 }}>{src.raw ? "✓" : "📄"}</div>
-                <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 16, color: src.color, marginBottom: 4 }}>{src.label}</div>
-                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>{src.sub}</div>
-                {src.raw ? (<div><div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text)", marginBottom: 4 }}>{src.raw}</div><div style={{ fontSize: 11, color: "var(--text-muted)" }}>{loading === src.loadingKey ? "⏳ Parsing file..." : `${src.data.length} rows`}</div><button onClick={(e) => { e.stopPropagation(); src.ref.current?.click(); }} style={{ marginTop: 10, padding: "5px 14px", borderRadius: 6, border: `1px solid ${src.color}44`, background: "transparent", color: src.color, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Replace</button></div>
-                ) : (<div style={{ fontSize: 13, color: "var(--text-muted)" }}>{src.uploadLabel}</div>)}
+                <div style={{ fontSize: 32, marginBottom: 10, opacity: src.raw ? 1 : 0.3 }}>{src.raw ? "✓" : "📄"}</div>
+                <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 15, color: src.color, marginBottom: 4 }}>{src.label}</div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 10 }}>{src.sub}</div>
+                {src.raw ? (<div><div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text)", marginBottom: 4, wordBreak: "break-all" }}>{src.raw}</div><div style={{ fontSize: 11, color: "var(--text-muted)" }}>{loading === src.loadingKey ? "⏳ Parsing..." : `${src.data.length} rows`}</div><button onClick={(e) => { e.stopPropagation(); src.ref.current?.click(); }} style={{ marginTop: 8, padding: "4px 12px", borderRadius: 6, border: `1px solid ${src.color}44`, background: "transparent", color: src.color, fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Replace</button></div>
+                ) : (<div style={{ fontSize: 12, color: "var(--text-muted)" }}>{src.uploadLabel}</div>)}
               </div>
             ))}
           </div>
@@ -568,20 +589,25 @@ export default function App() {
   // MAPPING
   // ═══════════════════════════════════════════════════════════
   if (step === "map") {
-    const canRun = nsConfirmed && icrmConfirmed;
+    const canRun = nsConfirmed && icrmConfirmed && (!icrm2Raw || icrm2Confirmed);
     return (
       <div style={{ minHeight: "100vh", background: "var(--bg)", padding: "40px 20px" }}><style>{css}</style>
         <div style={{ maxWidth: 820, margin: "0 auto" }}>
-          <button onClick={() => { setStep("upload"); setNsConfirmed(false); setIcrmConfirmed(false); }} style={{ marginBottom: 20, padding: "6px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", fontSize: 12, cursor: "pointer" }}>← Back</button>
+          <button onClick={() => { setStep("upload"); setNsConfirmed(false); setIcrmConfirmed(false); setIcrm2Confirmed(false); }} style={{ marginBottom: 20, padding: "6px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", fontSize: 12, cursor: "pointer" }}>← Back</button>
           <h2 className="fade-in" style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 900, marginBottom: 8 }}>Map Your Columns</h2>
-          <p className="fade-in stagger-1" style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 28 }}>Map columns and optionally filter NetSuite rows (e.g. only "Customer Invoice" type).</p>
+          <p className="fade-in stagger-1" style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 28 }}>Map columns for each file. ICRM files can have completely different structures — map each separately.</p>
           <div className="fade-in stagger-2">
             <FieldMapper headers={nsHeaders} label="NETSUITE" mapping={nsMap} color={COLORS.ns} onMap={(k, v) => setNsMap((p) => ({ ...p, [k]: v }))} onConfirm={() => setNsConfirmed(true)} showFilter={true} filterCol={nsFilterCol} filterVal={nsFilterVal} filterOptions={nsFilterOptions} onFilterCol={setNsFilterCol} onFilterVal={setNsFilterVal} />
           </div>
           <div className="fade-in stagger-3">
-            <FieldMapper headers={icrmHeaders} label="ICRM" mapping={icrmMap} color={COLORS.icrm} onMap={(k, v) => setIcrmMap((p) => ({ ...p, [k]: v }))} onConfirm={() => setIcrmConfirmed(true)} showFilter={false} filterCol="" filterVal="" filterOptions={[]} onFilterCol={() => {}} onFilterVal={() => {}} />
+            <FieldMapper headers={icrmHeaders} label="ICRM FILE 1" mapping={icrmMap} color={COLORS.icrm} onMap={(k, v) => setIcrmMap((p) => ({ ...p, [k]: v }))} onConfirm={() => setIcrmConfirmed(true)} showFilter={false} filterCol="" filterVal="" filterOptions={[]} onFilterCol={() => {}} onFilterVal={() => {}} />
           </div>
-          <div className="fade-in stagger-4" style={{ textAlign: "center", marginTop: 20 }}>
+          {icrm2Raw && (
+            <div className="fade-in stagger-4">
+              <FieldMapper headers={icrm2Headers} label="ICRM FILE 2" mapping={icrm2Map} color="#8b5cf6" onMap={(k, v) => setIcrm2Map((p) => ({ ...p, [k]: v }))} onConfirm={() => setIcrm2Confirmed(true)} showFilter={false} filterCol="" filterVal="" filterOptions={[]} onFilterCol={() => {}} onFilterVal={() => {}} />
+            </div>
+          )}
+          <div className="fade-in stagger-5" style={{ textAlign: "center", marginTop: 20 }}>
             <button disabled={!canRun} onClick={runReconciliation} style={{ padding: "14px 48px", borderRadius: 12, border: "none", fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 15, cursor: canRun ? "pointer" : "not-allowed", background: canRun ? "linear-gradient(135deg, #6366f1, #ec4899)" : "var(--border)", color: canRun ? "#fff" : "var(--text-muted)" }}>Run Reconciliation ⚡</button>
             {nsFilterCol && nsFilterVal && <div style={{ marginTop: 12, fontSize: 12, color: "#f59e0b" }}>Filtering: only "{nsFilterCol}" = "{nsFilterVal}"</div>}
           </div>
@@ -613,12 +639,12 @@ export default function App() {
               <div style={{ width: 32, height: 32, borderRadius: 10, background: "linear-gradient(135deg, #6366f1, #ec4899)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>⇄</div>
               <h1 style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 900 }}>Reconciliation Report</h1>
             </div>
-            <p style={{ color: "var(--text-muted)", fontSize: 12 }}>{nsRaw} vs {icrmRaw} — {stats.total} invoices{nsFilterCol && nsFilterVal && <span style={{ color: "#f59e0b" }}> (filtered: {nsFilterVal})</span>}</p>
+            <p style={{ color: "var(--text-muted)", fontSize: 12 }}>{nsRaw} vs {icrmRaw}{icrm2Raw ? ` + ${icrm2Raw}` : ""} — {stats.total} invoices{nsFilterCol && nsFilterVal && <span style={{ color: "#f59e0b" }}> (filtered: {nsFilterVal})</span>}</p>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <button onClick={exportCSV} style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: "linear-gradient(135deg, #10b981, #059669)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-display)" }}>Download CSV ↓</button>
             <button onClick={copyCSV} style={{ padding: "8px 18px", borderRadius: 8, border: "1px solid var(--border)", background: copyStatus === "copied" ? "#10b98120" : "var(--card)", color: copyStatus === "copied" ? "#10b981" : "var(--text)", fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "all .3s", minWidth: 130 }}>{copyStatus === "copied" ? "✓ Copied!" : "Copy CSV"}</button>
-            <button onClick={() => { setStep("upload"); setResults(null); setNsConfirmed(false); setIcrmConfirmed(false); }} style={{ padding: "8px 18px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", fontSize: 12, cursor: "pointer" }}>New Upload</button>
+            <button onClick={() => { setStep("upload"); setResults(null); setNsConfirmed(false); setIcrmConfirmed(false); setIcrm2Confirmed(false); }} style={{ padding: "8px 18px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", fontSize: 12, cursor: "pointer" }}>New Upload</button>
           </div>
         </div>
 
