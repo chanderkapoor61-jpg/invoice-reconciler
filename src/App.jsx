@@ -300,6 +300,19 @@ export default function App() {
           } else {
             rows = parseXLSX(new Uint8Array(ev.target.result));
           }
+
+          // For NetSuite files: auto Find & Replace "Rs. " and "Rs." with nothing
+          // This cleans up currency prefixes before any processing
+          if (source === "ns") {
+            rows = rows.map((row) => {
+              const cleaned = {};
+              Object.keys(row).forEach((k) => {
+                cleaned[k] = row[k].replace(/Rs\.\s?/gi, "");
+              });
+              return cleaned;
+            });
+          }
+
           setter(file.name);
           dataSetter(rows);
           if (rows.length) {
