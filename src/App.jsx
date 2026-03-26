@@ -398,21 +398,27 @@ export default function App() {
       const key = normalize(row[nsMap.invoiceNumber]);
       if (!key) return;
       if (!nsIndex[key]) {
-        // First line item — store the row and initialize total
         nsIndex[key] = { ...row, _totalAmount: Math.abs(parseNum(row[nsMap.amount])), _lineCount: 1 };
       } else {
-        // Additional line item — add to total
         nsIndex[key]._totalAmount += Math.abs(parseNum(row[nsMap.amount]));
         nsIndex[key]._lineCount += 1;
       }
     });
 
+    // Aggregate ICRM line items: same logic
     const icrmIndex = {};
-    icrmData.forEach((row) => { const key = normalize(row[icrmMap.invoiceNumber]); if (key) icrmIndex[key] = row; });
+    icrmData.forEach((row) => {
+      const key = normalize(row[icrmMap.invoiceNumber]);
+      if (!key) return;
+      if (!icrmIndex[key]) {
+        icrmIndex[key] = { ...row, _totalAmount: Math.abs(parseNum(row[icrmMap.amount])), _lineCount: 1 };
+      } else {
+        icrmIndex[key]._totalAmount += Math.abs(parseNum(row[icrmMap.amount]));
+        icrmIndex[key]._lineCount += 1;
+      }
+    });
 
-    // For NS: use pre-aggregated _totalAmount; for ICRM: parse normally
-    const nsToNum = (nsRow) => nsRow._totalAmount || 0;
-    const icrmToNum = (v) => Math.abs(parseNum(v));
+    const toNum = (row) => row._totalAmount || 0;
 
     const allKeys = new Set([...Object.keys(nsIndex), ...Object.keys(icrmIndex)]);
     const rows = [];
@@ -421,14 +427,14 @@ export default function App() {
       const ns = nsIndex[key]; const icrm = icrmIndex[key];
       const rec = { invoiceNumber: key, issues: [] };
       if (ns && !icrm) {
-        Object.assign(rec, { type: "netsuite_only", nsAmount: nsToNum(ns), icrmAmount: null, nsDate: ns[nsMap.date] || "", icrmDate: "", nsCustomer: ns[nsMap.customer] || "", icrmCustomer: "", nsLines: ns._lineCount });
+        Object.assign(rec, { type: "netsuite_only", nsAmount: toNum(ns), icrmAmount: null, nsDate: ns[nsMap.date] || "", icrmDate: "", nsCustomer: ns[nsMap.customer] || "", icrmCustomer: "", nsLines: ns._lineCount, icrmLines: 0 });
         rec.diff = rec.nsAmount; rec.issues.push("Missing in ICRM");
       } else if (!ns && icrm) {
-        Object.assign(rec, { type: "icrm_only", nsAmount: null, icrmAmount: icrmToNum(icrm[icrmMap.amount]), nsDate: "", icrmDate: icrm[icrmMap.date] || "", nsCustomer: "", icrmCustomer: icrm[icrmMap.customer] || "", nsLines: 0 });
+        Object.assign(rec, { type: "icrm_only", nsAmount: null, icrmAmount: toNum(icrm), nsDate: "", icrmDate: icrm[icrmMap.date] || "", nsCustomer: "", icrmCustomer: icrm[icrmMap.customer] || "", nsLines: 0, icrmLines: icrm._lineCount });
         rec.diff = rec.icrmAmount; rec.issues.push("Missing in NetSuite");
       } else {
-        rec.nsAmount = nsToNum(ns); rec.icrmAmount = icrmToNum(icrm[icrmMap.amount]);
-        rec.nsLines = ns._lineCount;
+        rec.nsAmount = toNum(ns); rec.icrmAmount = toNum(icrm);
+        rec.nsLines = ns._lineCount; rec.icrmLines = icrm._lineCount;
         rec.diff = +(rec.nsAmount - rec.icrmAmount).toFixed(2);
         rec.nsDate = ns[nsMap.date] || ""; rec.icrmDate = icrm[icrmMap.date] || "";
         rec.nsCustomer = ns[nsMap.customer] || ""; rec.icrmCustomer = icrm[icrmMap.customer] || "";
@@ -707,7 +713,8 @@ export default function App() {
                       <div>
                         <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.icrm, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8 }}>ICRM Record</div>
                         <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.8 }}>
-                          <div>Amount: <span style={{ color: "var(--text)", fontFamily: "var(--font-mono)" }}>{row.icrmAmount != null ? fmt(row.icrmAmount) : "N/A"}</span></div>
+                          <div>Amount (total): <span style={{ color: "var(--text)", fontFamily: "var(--font-mono)" }}>{row.icrmAmount != null ? fmt(row.icrmAmount) : "N/A"}</span></div>
+                          {row.icrmLines > 1 && <div>Line Items: <span style={{ color: "#f59e0b", fontWeight: 600 }}>{row.icrmLines} lines aggregated</span></div>}
                           <div>Date: <span style={{ color: "var(--text)" }}>{row.icrmDate || "N/A"}</span></div>
                           <div>Customer: <span style={{ color: "var(--text)" }}>{row.icrmCustomer || "N/A"}</span></div>
                         </div>
