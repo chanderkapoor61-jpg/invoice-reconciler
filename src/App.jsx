@@ -559,7 +559,7 @@ export default function App() {
 
   const css = `
     @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap');
-    :root { --bg: #0c0e14; --card: #13151e; --card-hover: #1a1d2a; --border: #1f2233; --text: #e8e9ed; --text-muted: #6b7194; --font-display: 'DM Sans', sans-serif; --font-body: 'DM Sans', sans-serif; --font-mono: 'JetBrains Mono', monospace; }
+    :root { --bg: #f0eef8; --card: #ffffff; --card-hover: #f5f3fc; --border: #ddd9f0; --text: #1a1a2e; --text-muted: #6b7194; --font-display: 'DM Sans', sans-serif; --font-body: 'DM Sans', sans-serif; --font-mono: 'JetBrains Mono', monospace; }
     * { margin: 0; padding: 0; box-sizing: border-box; } body { background: var(--bg); color: var(--text); font-family: var(--font-body); }
     ::selection { background: #6366f140; } ::-webkit-scrollbar { width: 6px; height: 6px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #2a2d40; border-radius: 3px; }
     input[type="file"] { display: none; }
@@ -596,14 +596,14 @@ export default function App() {
               { ref: icrm2Ref, raw: icrm2Raw, data: icrm2Data, color: "#8b5cf6", label: "Zoho File 1", sub: "Optional (.csv)", accept: ".csv", handler: handleSmartFile(setIcrm2Raw, setIcrm2Headers, setIcrm2Data, setIcrm2Map, "icrm2"), uploadLabel: "Click to upload (optional)", loadingKey: "icrm2" }
             ].map((src, i) => (
               <div key={i} className={`fade-in stagger-${i + 1}`} onClick={() => !src.raw && src.ref.current?.click()}
-                style={{ background: "var(--card)", borderRadius: 16, padding: 28, border: `1.5px dashed ${src.raw ? src.color : "var(--border)"}`, cursor: src.raw ? "default" : "pointer", textAlign: "center", transition: "all .25s", position: "relative", overflow: "hidden" }}>
+                style={{ background: "#13151e", borderRadius: 16, padding: 28, border: `1.5px dashed ${src.raw ? src.color : "#1f2233"}`, cursor: src.raw ? "default" : "pointer", textAlign: "center", transition: "all .25s", position: "relative", overflow: "hidden" }}>
                 {src.raw && <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${src.color}, ${src.color}88)` }} />}
                 <input type="file" ref={src.ref} accept={src.accept} onChange={src.handler} />
                 <div style={{ fontSize: 32, marginBottom: 10, opacity: src.raw ? 1 : 0.3 }}>{src.raw ? "✓" : "📄"}</div>
                 <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 15, color: src.color, marginBottom: 4 }}>{src.label}</div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 10 }}>{src.sub}</div>
-                {src.raw ? (<div><div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text)", marginBottom: 4, wordBreak: "break-all" }}>{src.raw}</div><div style={{ fontSize: 11, color: "var(--text-muted)" }}>{loading === src.loadingKey ? "⏳ Parsing..." : `${src.data.length} rows`}</div><button onClick={(e) => { e.stopPropagation(); src.ref.current?.click(); }} style={{ marginTop: 8, padding: "4px 12px", borderRadius: 6, border: `1px solid ${src.color}44`, background: "transparent", color: src.color, fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Replace</button></div>
-                ) : (<div style={{ fontSize: 12, color: "var(--text-muted)" }}>{src.uploadLabel}</div>)}
+                <div style={{ fontSize: 11, color: "#6b7194", marginBottom: 10 }}>{src.sub}</div>
+                {src.raw ? (<div><div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#e8e9ed", marginBottom: 4, wordBreak: "break-all" }}>{src.raw}</div><div style={{ fontSize: 11, color: "#6b7194" }}>{loading === src.loadingKey ? "⏳ Parsing..." : `${src.data.length} rows`}</div><button onClick={(e) => { e.stopPropagation(); src.ref.current?.click(); }} style={{ marginTop: 8, padding: "4px 12px", borderRadius: 6, border: `1px solid ${src.color}44`, background: "transparent", color: src.color, fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Replace</button></div>
+                ) : (<div style={{ fontSize: 12, color: "#6b7194" }}>{src.uploadLabel}</div>)}
               </div>
             ))}
           </div>
