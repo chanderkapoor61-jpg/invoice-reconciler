@@ -587,7 +587,7 @@ export default function App() {
                 <path d="M20 19v6l6-3v-6l-6 3z" fill="#5B2DA8"/>
               </svg>
               <div>
-                <h1 style={{ fontFamily: "var(--font-display)", fontSize: 26, fontWeight: 900, letterSpacing: "-.02em", color: "var(--text)" }}>Interco Reconciliation</h1>
+                <h1 style={{ fontFamily: "var(--font-display)", fontSize: 26, fontWeight: 900, letterSpacing: "-.02em", color: "var(--text)" }}>Invoice Reconciler</h1>
                 <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".08em", color: "#8b5cf6", textTransform: "uppercase" }}>Shiprocket · Finance & Accounts</div>
               </div>
             </div>
