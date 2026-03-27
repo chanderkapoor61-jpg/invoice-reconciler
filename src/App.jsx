@@ -593,7 +593,7 @@ export default function App() {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 32 }}>
             {[{ ref: nsRef, raw: nsRaw, data: nsData, color: COLORS.ns, label: "NetSuite ERP", sub: "Revenue Data (.csv)", accept: ".csv", handler: handleSmartFile(setNsRaw, setNsHeaders, setNsData, setNsMap, "ns"), uploadLabel: "Click to upload CSV", loadingKey: "ns" },
               { ref: icrmRef, raw: icrmRaw, data: icrmData, color: COLORS.icrm, label: "ICRM File 1", sub: "ICRM Records (.csv)", accept: ".csv", handler: handleSmartFile(setIcrmRaw, setIcrmHeaders, setIcrmData, setIcrmMap, "icrm"), uploadLabel: "Click to upload CSV", loadingKey: "icrm" },
-              { ref: icrm2Ref, raw: icrm2Raw, data: icrm2Data, color: "#8b5cf6", label: "ICRM File 2", sub: "Optional (.csv)", accept: ".csv", handler: handleSmartFile(setIcrm2Raw, setIcrm2Headers, setIcrm2Data, setIcrm2Map, "icrm2"), uploadLabel: "Click to upload (optional)", loadingKey: "icrm2" }
+              { ref: icrm2Ref, raw: icrm2Raw, data: icrm2Data, color: "#8b5cf6", label: "Zoho File 1", sub: "Optional (.csv)", accept: ".csv", handler: handleSmartFile(setIcrm2Raw, setIcrm2Headers, setIcrm2Data, setIcrm2Map, "icrm2"), uploadLabel: "Click to upload (optional)", loadingKey: "icrm2" }
             ].map((src, i) => (
               <div key={i} className={`fade-in stagger-${i + 1}`} onClick={() => !src.raw && src.ref.current?.click()}
                 style={{ background: "var(--card)", borderRadius: 16, padding: 28, border: `1.5px dashed ${src.raw ? src.color : "var(--border)"}`, cursor: src.raw ? "default" : "pointer", textAlign: "center", transition: "all .25s", position: "relative", overflow: "hidden" }}>
@@ -640,7 +640,7 @@ export default function App() {
           </div>
           {icrm2Raw && (
             <div className="fade-in stagger-4">
-              <FieldMapper headers={icrm2Headers} label="ICRM FILE 2" mapping={icrm2Map} color="#8b5cf6" onMap={(k, v) => setIcrm2Map((p) => ({ ...p, [k]: v }))} onConfirm={() => setIcrm2Confirmed(true)} showFilter={false} filterCol="" filterVal="" filterOptions={[]} onFilterCol={() => {}} onFilterVal={() => {}} />
+              <FieldMapper headers={icrm2Headers} label="ZOHO FILE 1" mapping={icrm2Map} color="#8b5cf6" onMap={(k, v) => setIcrm2Map((p) => ({ ...p, [k]: v }))} onConfirm={() => setIcrm2Confirmed(true)} showFilter={false} filterCol="" filterVal="" filterOptions={[]} onFilterCol={() => {}} onFilterVal={() => {}} />
             </div>
           )}
           <div className="fade-in stagger-5" style={{ textAlign: "center", marginTop: 20 }}>
