@@ -578,7 +578,7 @@ export default function App() {
           <div className="fade-in" style={{ textAlign: "center", marginBottom: 48 }}>
             <div style={{ display: "inline-flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
               <div>
-                <h1 style={{ fontFamily: "var(--font-display)", fontSize: 26, fontWeight: 900, letterSpacing: "-.02em", color: "var(--text)" }}>Interco Reconciliation</h1>
+                <h1 style={{ fontFamily: "var(--font-display)", fontSize: 26, fontWeight: 900, letterSpacing: "-.02em", color: "var(--text)" }}>Invoice Reconciler</h1>
                 <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".08em", color: "#8b5cf6", textTransform: "uppercase" }}>Shiprocket · Finance & Accounts</div>
               </div>
             </div>
