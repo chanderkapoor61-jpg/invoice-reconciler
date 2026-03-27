@@ -559,11 +559,9 @@ export default function App() {
 
   const css = `
     @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap');
-    :root { --bg: #0a0a1a; --card: #111128; --card-hover: #1a1a38; --border: #252547; --text: #e8e9f0; --text-muted: #7578a0; --font-display: 'DM Sans', sans-serif; --font-body: 'DM Sans', sans-serif; --font-mono: 'JetBrains Mono', monospace; --accent: #8B5CF6; --accent2: #6C3FBF; }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: var(--bg); color: var(--text); font-family: var(--font-body); }
-    body::before { content: ''; position: fixed; inset: 0; background-image: linear-gradient(rgba(139,92,246,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(139,92,246,0.04) 1px, transparent 1px); background-size: 60px 60px; pointer-events: none; z-index: 0; }
-    ::selection { background: #8B5CF640; } ::-webkit-scrollbar { width: 6px; height: 6px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #2a2a50; border-radius: 3px; }
+    :root { --bg: #0c0e14; --card: #13151e; --card-hover: #1a1d2a; --border: #1f2233; --text: #e8e9ed; --text-muted: #6b7194; --font-display: 'DM Sans', sans-serif; --font-body: 'DM Sans', sans-serif; --font-mono: 'JetBrains Mono', monospace; }
+    * { margin: 0; padding: 0; box-sizing: border-box; } body { background: var(--bg); color: var(--text); font-family: var(--font-body); }
+    ::selection { background: #6366f140; } ::-webkit-scrollbar { width: 6px; height: 6px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #2a2d40; border-radius: 3px; }
     input[type="file"] { display: none; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
     .fade-in { animation: fadeIn .5s ease both; }
@@ -579,15 +577,8 @@ export default function App() {
         <div style={{ maxWidth: 820, margin: "0 auto" }}>
           <div className="fade-in" style={{ textAlign: "center", marginBottom: 48 }}>
             <div style={{ display: "inline-flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
-              <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect width="40" height="40" rx="10" fill="#fff"/>
-                <path d="M12 14l8-4 8 4v8l-8 4-8-4v-8z" fill="#6C3FBF" opacity="0.2"/>
-                <path d="M14 16l6-3 6 3v6l-6 3-6-3v-6z" fill="#6C3FBF"/>
-                <path d="M20 13l6 3-6 3-6-3 6-3z" fill="#8B5CF6"/>
-                <path d="M20 19v6l6-3v-6l-6 3z" fill="#5B2DA8"/>
-              </svg>
               <div>
-                <h1 style={{ fontFamily: "var(--font-display)", fontSize: 26, fontWeight: 900, letterSpacing: "-.02em", color: "var(--text)" }}>Invoice Reconciler</h1>
+                <h1 style={{ fontFamily: "var(--font-display)", fontSize: 26, fontWeight: 900, letterSpacing: "-.02em", color: "var(--text)" }}>Interco Reconciliation</h1>
                 <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".08em", color: "#8b5cf6", textTransform: "uppercase" }}>Shiprocket · Finance & Accounts</div>
               </div>
             </div>
@@ -622,7 +613,6 @@ export default function App() {
           </div>
           <div style={{ textAlign: "center", marginTop: 48, paddingTop: 24, borderTop: "1px solid var(--border)" }}>
             <div style={{ display: "inline-flex", alignItems: "center", gap: 8, color: "var(--text-muted)", fontSize: 11 }}>
-              <svg width="16" height="16" viewBox="0 0 40 40" fill="none"><rect width="40" height="40" rx="10" fill="#fff"/><path d="M14 16l6-3 6 3v6l-6 3-6-3v-6z" fill="#6C3FBF"/><path d="M20 13l6 3-6 3-6-3 6-3z" fill="#8B5CF6"/><path d="M20 19v6l6-3v-6l-6 3z" fill="#5B2DA8"/></svg>
               Shiprocket · Finance & Accounts · Internal Tool
             </div>
           </div>
@@ -682,13 +672,6 @@ export default function App() {
         <div className="fade-in" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28, flexWrap: "wrap", gap: 12 }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-              <svg width="28" height="28" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect width="40" height="40" rx="10" fill="#fff"/>
-                <path d="M12 14l8-4 8 4v8l-8 4-8-4v-8z" fill="#6C3FBF" opacity="0.2"/>
-                <path d="M14 16l6-3 6 3v6l-6 3-6-3v-6z" fill="#6C3FBF"/>
-                <path d="M20 13l6 3-6 3-6-3 6-3z" fill="#8B5CF6"/>
-                <path d="M20 19v6l6-3v-6l-6 3z" fill="#5B2DA8"/>
-              </svg>
               <h1 style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 900 }}>Reconciliation Report</h1>
             </div>
             <p style={{ color: "var(--text-muted)", fontSize: 12 }}>{nsRaw} vs {icrmRaw}{icrm2Raw ? ` + ${icrm2Raw}` : ""} — {stats.total} invoices{nsFilterCol && nsFilterVal && <span style={{ color: "#f59e0b" }}> (filtered: {nsFilterVal})</span>}</p>
