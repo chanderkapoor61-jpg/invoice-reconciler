@@ -559,9 +559,11 @@ export default function App() {
 
   const css = `
     @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap');
-    :root { --bg: #0c0e14; --card: #13151e; --card-hover: #1a1d2a; --border: #1f2233; --text: #e8e9ed; --text-muted: #6b7194; --font-display: 'DM Sans', sans-serif; --font-body: 'DM Sans', sans-serif; --font-mono: 'JetBrains Mono', monospace; }
-    * { margin: 0; padding: 0; box-sizing: border-box; } body { background: var(--bg); color: var(--text); font-family: var(--font-body); }
-    ::selection { background: #6366f140; } ::-webkit-scrollbar { width: 6px; height: 6px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #2a2d40; border-radius: 3px; }
+    :root { --bg: #0a0a1a; --card: #111128; --card-hover: #1a1a38; --border: #252547; --text: #e8e9f0; --text-muted: #7578a0; --font-display: 'DM Sans', sans-serif; --font-body: 'DM Sans', sans-serif; --font-mono: 'JetBrains Mono', monospace; --accent: #8B5CF6; --accent2: #6C3FBF; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: var(--bg); color: var(--text); font-family: var(--font-body); }
+    body::before { content: ''; position: fixed; inset: 0; background-image: linear-gradient(rgba(139,92,246,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(139,92,246,0.04) 1px, transparent 1px); background-size: 60px 60px; pointer-events: none; z-index: 0; }
+    ::selection { background: #8B5CF640; } ::-webkit-scrollbar { width: 6px; height: 6px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #2a2a50; border-radius: 3px; }
     input[type="file"] { display: none; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
     .fade-in { animation: fadeIn .5s ease both; }
@@ -576,11 +578,20 @@ export default function App() {
       <div style={{ minHeight: "100vh", background: "var(--bg)", padding: "40px 20px" }}><style>{css}</style>
         <div style={{ maxWidth: 820, margin: "0 auto" }}>
           <div className="fade-in" style={{ textAlign: "center", marginBottom: 48 }}>
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
-              <div style={{ width: 40, height: 40, borderRadius: 12, background: "linear-gradient(135deg, #6366f1, #ec4899)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>⇄</div>
-              <h1 style={{ fontFamily: "var(--font-display)", fontSize: 28, fontWeight: 900, letterSpacing: "-.02em", background: "linear-gradient(135deg, #6366f1, #ec4899)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Invoice Reconciler</h1>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
+              <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect width="40" height="40" rx="10" fill="#fff"/>
+                <path d="M12 14l8-4 8 4v8l-8 4-8-4v-8z" fill="#6C3FBF" opacity="0.2"/>
+                <path d="M14 16l6-3 6 3v6l-6 3-6-3v-6z" fill="#6C3FBF"/>
+                <path d="M20 13l6 3-6 3-6-3 6-3z" fill="#8B5CF6"/>
+                <path d="M20 19v6l6-3v-6l-6 3z" fill="#5B2DA8"/>
+              </svg>
+              <div>
+                <h1 style={{ fontFamily: "var(--font-display)", fontSize: 26, fontWeight: 900, letterSpacing: "-.02em", color: "var(--text)" }}>Interco Reconciliation</h1>
+                <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".08em", color: "#8b5cf6", textTransform: "uppercase" }}>Shiprocket · Finance & Accounts</div>
+              </div>
             </div>
-            <p style={{ color: "var(--text-muted)", fontSize: 15, maxWidth: 500, margin: "0 auto" }}>Compare NetSuite ERP invoices against ICRM records. Supports both .xlsx and .csv files.</p>
+            <p style={{ color: "var(--text-muted)", fontSize: 15, maxWidth: 520, margin: "0 auto" }}>Reconcile NetSuite ERP data against ICRM records. Supports .csv files only.</p>
             {hasSavedMapping && (
               <div style={{ marginTop: 12, padding: "8px 16px", background: "#10b98115", borderRadius: 8, display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12, color: "#10b981" }}>
                 ✓ Previous column mappings saved — they'll auto-apply on upload
@@ -589,9 +600,9 @@ export default function App() {
             )}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 32 }}>
-            {[{ ref: nsRef, raw: nsRaw, data: nsData, color: COLORS.ns, label: "NetSuite", sub: "ERP Revenue Invoices (.xlsx / .csv)", accept: ".xlsx,.xls,.csv", handler: handleSmartFile(setNsRaw, setNsHeaders, setNsData, setNsMap, "ns"), uploadLabel: "Click to upload Excel or CSV", loadingKey: "ns" },
-              { ref: icrmRef, raw: icrmRaw, data: icrmData, color: COLORS.icrm, label: "ICRM File 1", sub: "Invoice Records (.csv / .xlsx)", accept: ".csv,.xlsx,.xls", handler: handleSmartFile(setIcrmRaw, setIcrmHeaders, setIcrmData, setIcrmMap, "icrm"), uploadLabel: "Click to upload CSV or Excel", loadingKey: "icrm" },
-              { ref: icrm2Ref, raw: icrm2Raw, data: icrm2Data, color: "#8b5cf6", label: "ICRM File 2", sub: "Optional — different format", accept: ".csv,.xlsx,.xls", handler: handleSmartFile(setIcrm2Raw, setIcrm2Headers, setIcrm2Data, setIcrm2Map, "icrm2"), uploadLabel: "Click to upload (optional)", loadingKey: "icrm2" }
+            {[{ ref: nsRef, raw: nsRaw, data: nsData, color: COLORS.ns, label: "NetSuite ERP", sub: "Revenue Data (.csv)", accept: ".csv", handler: handleSmartFile(setNsRaw, setNsHeaders, setNsData, setNsMap, "ns"), uploadLabel: "Click to upload CSV", loadingKey: "ns" },
+              { ref: icrmRef, raw: icrmRaw, data: icrmData, color: COLORS.icrm, label: "ICRM File 1", sub: "ICRM Records (.csv)", accept: ".csv", handler: handleSmartFile(setIcrmRaw, setIcrmHeaders, setIcrmData, setIcrmMap, "icrm"), uploadLabel: "Click to upload CSV", loadingKey: "icrm" },
+              { ref: icrm2Ref, raw: icrm2Raw, data: icrm2Data, color: "#8b5cf6", label: "ICRM File 2", sub: "Optional (.csv)", accept: ".csv", handler: handleSmartFile(setIcrm2Raw, setIcrm2Headers, setIcrm2Data, setIcrm2Map, "icrm2"), uploadLabel: "Click to upload (optional)", loadingKey: "icrm2" }
             ].map((src, i) => (
               <div key={i} className={`fade-in stagger-${i + 1}`} onClick={() => !src.raw && src.ref.current?.click()}
                 style={{ background: "var(--card)", borderRadius: 16, padding: 28, border: `1.5px dashed ${src.raw ? src.color : "var(--border)"}`, cursor: src.raw ? "default" : "pointer", textAlign: "center", transition: "all .25s", position: "relative", overflow: "hidden" }}>
@@ -606,8 +617,14 @@ export default function App() {
             ))}
           </div>
           <div className="fade-in stagger-3" style={{ textAlign: "center" }}>
-            <button disabled={!nsRaw || !icrmRaw} onClick={proceedToMap} style={{ padding: "14px 48px", borderRadius: 12, border: "none", fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 15, cursor: nsRaw && icrmRaw ? "pointer" : "not-allowed", background: nsRaw && icrmRaw ? "linear-gradient(135deg, #6366f1, #ec4899)" : "var(--border)", color: nsRaw && icrmRaw ? "#fff" : "var(--text-muted)", transition: "all .3s" }}>Map Columns →</button>
+            <button disabled={!nsRaw || !icrmRaw} onClick={proceedToMap} style={{ padding: "14px 48px", borderRadius: 12, border: "none", fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 15, cursor: nsRaw && icrmRaw ? "pointer" : "not-allowed", background: nsRaw && icrmRaw ? "linear-gradient(135deg, #6C3FBF, #8B5CF6)" : "var(--border)", color: nsRaw && icrmRaw ? "#fff" : "var(--text-muted)", transition: "all .3s" }}>Map Columns →</button>
             <div style={{ marginTop: 20 }}><button onClick={loadSample} style={{ padding: "8px 20px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Load Sample Data</button></div>
+          </div>
+          <div style={{ textAlign: "center", marginTop: 48, paddingTop: 24, borderTop: "1px solid var(--border)" }}>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 8, color: "var(--text-muted)", fontSize: 11 }}>
+              <svg width="16" height="16" viewBox="0 0 40 40" fill="none"><rect width="40" height="40" rx="10" fill="#fff"/><path d="M14 16l6-3 6 3v6l-6 3-6-3v-6z" fill="#6C3FBF"/><path d="M20 13l6 3-6 3-6-3 6-3z" fill="#8B5CF6"/><path d="M20 19v6l6-3v-6l-6 3z" fill="#5B2DA8"/></svg>
+              Shiprocket · Finance & Accounts · Internal Tool
+            </div>
           </div>
         </div>
       </div>
@@ -624,7 +641,7 @@ export default function App() {
         <div style={{ maxWidth: 820, margin: "0 auto" }}>
           <button onClick={() => { setStep("upload"); setNsConfirmed(false); setIcrmConfirmed(false); setIcrm2Confirmed(false); }} style={{ marginBottom: 20, padding: "6px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", fontSize: 12, cursor: "pointer" }}>← Back</button>
           <h2 className="fade-in" style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 900, marginBottom: 8 }}>Map Your Columns</h2>
-          <p className="fade-in stagger-1" style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 28 }}>Map columns for each file. ICRM files can have completely different structures — map each separately.</p>
+          <p className="fade-in stagger-1" style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 28 }}>Map columns for each CSV file. ICRM files can have completely different structures — map each separately.</p>
           <div className="fade-in stagger-2">
             <FieldMapper headers={nsHeaders} label="NETSUITE" mapping={nsMap} color={COLORS.ns} onMap={(k, v) => setNsMap((p) => ({ ...p, [k]: v }))} onConfirm={() => setNsConfirmed(true)} showFilter={true} filterCol={nsFilterCol} filterVal={nsFilterVal} filterOptions={nsFilterOptions} onFilterCol={setNsFilterCol} onFilterVal={setNsFilterVal} />
           </div>
@@ -637,7 +654,7 @@ export default function App() {
             </div>
           )}
           <div className="fade-in stagger-5" style={{ textAlign: "center", marginTop: 20 }}>
-            <button disabled={!canRun} onClick={runReconciliation} style={{ padding: "14px 48px", borderRadius: 12, border: "none", fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 15, cursor: canRun ? "pointer" : "not-allowed", background: canRun ? "linear-gradient(135deg, #6366f1, #ec4899)" : "var(--border)", color: canRun ? "#fff" : "var(--text-muted)" }}>Run Reconciliation ⚡</button>
+            <button disabled={!canRun} onClick={runReconciliation} style={{ padding: "14px 48px", borderRadius: 12, border: "none", fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 15, cursor: canRun ? "pointer" : "not-allowed", background: canRun ? "linear-gradient(135deg, #6C3FBF, #8B5CF6)" : "var(--border)", color: canRun ? "#fff" : "var(--text-muted)" }}>Run Reconciliation ⚡</button>
             {nsFilterCol && nsFilterVal && <div style={{ marginTop: 12, fontSize: 12, color: "#f59e0b" }}>Filtering: only "{nsFilterCol}" = "{nsFilterVal}"</div>}
           </div>
         </div>
@@ -665,7 +682,13 @@ export default function App() {
         <div className="fade-in" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28, flexWrap: "wrap", gap: 12 }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-              <div style={{ width: 32, height: 32, borderRadius: 10, background: "linear-gradient(135deg, #6366f1, #ec4899)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>⇄</div>
+              <svg width="28" height="28" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect width="40" height="40" rx="10" fill="#fff"/>
+                <path d="M12 14l8-4 8 4v8l-8 4-8-4v-8z" fill="#6C3FBF" opacity="0.2"/>
+                <path d="M14 16l6-3 6 3v6l-6 3-6-3v-6z" fill="#6C3FBF"/>
+                <path d="M20 13l6 3-6 3-6-3 6-3z" fill="#8B5CF6"/>
+                <path d="M20 19v6l6-3v-6l-6 3z" fill="#5B2DA8"/>
+              </svg>
               <h1 style={{ fontFamily: "var(--font-display)", fontSize: 22, fontWeight: 900 }}>Reconciliation Report</h1>
             </div>
             <p style={{ color: "var(--text-muted)", fontSize: 12 }}>{nsRaw} vs {icrmRaw}{icrm2Raw ? ` + ${icrm2Raw}` : ""} — {stats.total} invoices{nsFilterCol && nsFilterVal && <span style={{ color: "#f59e0b" }}> (filtered: {nsFilterVal})</span>}</p>
